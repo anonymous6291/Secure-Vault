@@ -1,4 +1,4 @@
-/src/main/java/com/securevault/ConfigurationDefaults.java
+###/src/main/java/com/securevault/ConfigurationDefaults.java
 /Secure Vault/
 target/
 !.mvn/wrapper/maven-wrapper.jar

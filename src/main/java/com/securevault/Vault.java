@@ -46,6 +46,7 @@ public class Vault implements AutoCloseable {
         }
         vaultKey = configurationManager.getVaultKey();
         Logger.init(vaultFileSystem.getPath("/" + ENCRYPTED_LOG_FILE_NAME), vaultFileSystem.getPath("/" + DECRYPTED_LOG_FILE_NAME), vaultKey);
+        Logger.logInfo("Vault opened.");
         IO.println(new String(vaultKey));
     }
 
