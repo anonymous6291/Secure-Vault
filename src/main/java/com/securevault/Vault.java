@@ -11,6 +11,8 @@ public class Vault implements AutoCloseable {
     private static final String VAULT_FOLDER_NAME = "Secure Vault";
     private static final String VAULT_FILE_NAME = "vault.zip";
     private static final String CONFIG_FILE_NAME = "config.data";
+    private static final String ENCRYPTED_LOG_FILE_NAME = "log.data";
+    private static final String DECRYPTED_LOG_FILE_NAME = "log.data1";
     private final FileSystem vaultFileSystem;
     private final ConfigurationManager configurationManager;
     private final char[] vaultKey;
@@ -43,6 +45,7 @@ public class Vault implements AutoCloseable {
             throw new VaultException("Invalid password.");
         }
         vaultKey = configurationManager.getVaultKey();
+        Logger.init(vaultFileSystem.getPath("/" + ENCRYPTED_LOG_FILE_NAME), vaultFileSystem.getPath("/" + DECRYPTED_LOG_FILE_NAME), vaultKey);
         IO.println(new String(vaultKey));
     }
 
@@ -50,8 +53,14 @@ public class Vault implements AutoCloseable {
         if (!vaultFileSystem.isOpen()) {
             return;
         }
-        configurationManager.writeConfiguration();
-        vaultFileSystem.close();
+        try {
+            configurationManager.writeConfiguration();
+            Logger.close();
+        } catch (Exception e) {
+            throw new VaultException("Exception occurred while performing shutdown tasks of Vault : " + e);
+        } finally {
+            vaultFileSystem.close();
+        }
     }
 
     @Override
@@ -59,12 +68,7 @@ public class Vault implements AutoCloseable {
         if (!vaultFileSystem.isOpen()) {
             return;
         }
-        try {
-            configurationManager.writeConfiguration();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        vaultFileSystem.close();
+        closeVault();
     }
 }
 
