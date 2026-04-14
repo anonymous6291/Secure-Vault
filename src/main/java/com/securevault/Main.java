@@ -1,7 +1,7 @@
 package com.securevault;
 
 public class Main {
-    static void main() throws Exception {
+    static void main(){
         String password = "Hello";
         try (Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault/vault.zip", false, password.toCharArray())) {
             //ConfigurationManager configurationManager = new ConfigurationManager(null, true, null);
