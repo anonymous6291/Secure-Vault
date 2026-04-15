@@ -9,18 +9,20 @@ import java.io.BufferedReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
 public class Logger {
     private static final ConfigurationDefaults.Data configurations = ConfigurationDefaults.getDefault(Logger.class);
+    private static final Semaphore lock = new Semaphore(1, true);
     private static BufferedOutputStream logFileWriter;
     private static Path encrLogFile;
     private static Path decrLogFile;
     private static boolean initialized;
     private static char[] encryptionKey;
-    private static final Semaphore lock = new Semaphore(1, true);
 
     public static void init(Path encryptedLogFile, Path decryptedLogFile, char[] key) throws Exception {
         if (initialized) {
@@ -36,6 +38,9 @@ public class Logger {
                 } catch (Exception e) {
                     IO.println("Exception occurred while reading encrypted file : " + e);
                 }
+            }
+            if (!Files.exists(decryptedLogFile)) {
+                Files.createFile(decryptedLogFile);
             }
             logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile, StandardOpenOption.APPEND));
             encrLogFile = encryptedLogFile;
@@ -79,14 +84,11 @@ public class Logger {
     }
 
     public static synchronized void log(String message, LogType logType) {
-        if (!initialized) {
+        if (!(initialized && lock())) {
             IO.println("[" + logType + "] : " + message);
         }
-        if (!lock()) {
-            return;
-        }
         try {
-            logFileWriter.write(("[" + logType + "] : " + message + "\n").getBytes());
+            logFileWriter.write((new Date() + " [" + logType + "] : " + message + "\n").getBytes());
             logFileWriter.flush();
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while writing to the log file : " + e);
@@ -119,9 +121,7 @@ public class Logger {
                 logs.add(nextLine);
             }
             StringBuilder allLogs = new StringBuilder();
-            for (String s : logs) {
-                allLogs.append(s).append('\n');
-            }
+            logs.forEach(x -> allLogs.append(x).append('\n'));
             return allLogs.toString();
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting logs.");

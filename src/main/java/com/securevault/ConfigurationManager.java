@@ -10,13 +10,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Date;
 
 public class ConfigurationManager {
     private static final String VERSION = "1.0.0";
     private static final int KEY_LENGTH = 50;
     private static final int IV_LENGTH = 12;
     private static final int SALT_LENGTH = 16;
-    private static final int MAX_TRIES = 5;
+    private static final int MAX_TRIES = 2;
+    private static final int PER_DAY_MAX_TRIES = 15;
     private static final long WRONG_TRY_DELAY_MILLIS = 5 * 60 * 1000;
     private static final ObjectMapper json = new ObjectMapper();
     private static final Base64.Encoder base64Encoder = Base64.getEncoder();
@@ -39,15 +41,18 @@ public class ConfigurationManager {
             byte[] salt = generateRandomBytes(SALT_LENGTH);
             Cipher cipher = CipherManager.getCipher(key, iv, salt, true);
             byte[] encr = cipher.doFinal(generatedChar);
-            configuration = new Configuration(VERSION, false, 0, 1, false, 0, base64Encoder.encodeToString(encr), base64Encoder.encodeToString(iv), base64Encoder.encodeToString(salt));
+            configuration = new Configuration(VERSION, false, new Date(), 0, false, false, 0, base64Encoder.encodeToString(encr), base64Encoder.encodeToString(iv), base64Encoder.encodeToString(salt));
         } else {
             byte[] configData = Files.readAllBytes(config);
             Cipher cipher = CipherManager.getCipher(configurationManagerData.key(), configurationManagerData.iv(), configurationManagerData.salt(), false);
             String configString = new String(cipher.doFinal(configData), StandardCharsets.UTF_16);
             configuration = json.readValue(configString, Configuration.class);
             IO.println(configString);
-            if (configuration.getLockdown() && configuration.getLockdown_end_time() >= System.currentTimeMillis()) {
-                throw new LockdownModeException("Vault is in lockdown mode.");
+            if (configuration.getIs_destructed()) {
+                throw new VaultDestructedException();
+            }
+            if (configuration.getLockdown() && new Date().before(configuration.getLockdown_end_time())) {
+                throw new LockdownModeException("Vault is in lockdown mode. Lockdown mode ends at [" + configuration.getLockdown_end_time() + "] .");
             }
             byte[] encrKey = base64Decoder.decode(configuration.getKey());
             byte[] iv = base64Decoder.decode(configuration.getIv());
@@ -60,21 +65,26 @@ public class ConfigurationManager {
                 configuration.setTries(0);
             } catch (AEADBadTagException e) {
                 int tries = configuration.getTries() + 1;
-                if (tries > MAX_TRIES) {
-                    if (configuration.getSelf_destruct() && configuration.getSelf_destruct_limit() < tries) {
-                        String modify = base64Encoder.encodeToString(generateRandomBytes(configuration.getKey().length()));
-                        configuration.setKey(modify);
-                        configuration.setSelf_destruct(false);
-                        configuration.setSelf_destruct_limit(0);
-                    } else {
-                        long delay = Math.max(0, ((tries - MAX_TRIES + 2) / 2)) * WRONG_TRY_DELAY_MILLIS;
+                if (configuration.getSelf_destruct() && configuration.getSelf_destruct_limit() <= tries) {
+                    String modifiedKey = base64Encoder.encodeToString(generateRandomBytes(configuration.getKey().length()));
+                    configuration.setKey(modifiedKey);
+                    configuration.setIs_destructed(true);
+                    configuration.setSelf_destruct(false);
+                    configuration.setSelf_destruct_limit(0);
+                    tries = 0;
+                } else if (tries >= PER_DAY_MAX_TRIES) {
+                    tries = 0;
+                    configuration.setLockdown(true);
+                    configuration.setLockdown_end_time(new Date(System.currentTimeMillis() + 24L * 60 * 60 * 1000));
+                } else if (tries >= MAX_TRIES) {
+                    int extra = tries - MAX_TRIES;
+                    if ((extra & 1) == 0) {
+                        long delay = ((extra / 2) + 1) * WRONG_TRY_DELAY_MILLIS;
                         configuration.setLockdown(true);
-                        configuration.setLockdown_end_time(delay + System.currentTimeMillis());
-                        configuration.setTries(tries);
+                        configuration.setLockdown_end_time(new Date(delay + System.currentTimeMillis()));
                     }
-                } else {
-                    configuration.setTries(tries);
                 }
+                configuration.setTries(tries);
                 writeConfiguration();
                 throw e;
             }
@@ -94,7 +104,7 @@ public class ConfigurationManager {
 
     public void enableLockdownMode(long duration) {
         configuration.setLockdown(true);
-        configuration.setLockdown_end_time(duration + System.currentTimeMillis());
+        configuration.setLockdown_end_time(new Date(duration + System.currentTimeMillis()));
     }
 
     public boolean isSelfDestructEnabled() {
@@ -131,19 +141,21 @@ public class ConfigurationManager {
     static class Configuration {
         private String version;
         private boolean lockdown;
-        private long lockdown_end_time;
+        private Date lockdown_end_time;
         private int tries;
+        private boolean is_destructed;
         private boolean self_destruct;
         private int self_destruct_limit;
         private String key;
         private String iv;
         private String salt;
 
-        public Configuration(String version, boolean lockdown, long lockdown_end_time, int tries, boolean self_destruct, int self_destruct_limit, String key, String iv, String salt) {
+        public Configuration(String version, boolean lockdown, Date lockdown_end_time, int tries, boolean is_destructed, boolean self_destruct, int self_destruct_limit, String key, String iv, String salt) {
             this.version = version;
             this.lockdown = lockdown;
             this.lockdown_end_time = lockdown_end_time;
             this.tries = tries;
+            this.is_destructed = is_destructed;
             this.self_destruct = self_destruct;
             this.self_destruct_limit = self_destruct_limit;
             this.key = key;
@@ -170,11 +182,11 @@ public class ConfigurationManager {
             this.lockdown = lockdown;
         }
 
-        public long getLockdown_end_time() {
+        public Date getLockdown_end_time() {
             return lockdown_end_time;
         }
 
-        public void setLockdown_end_time(long lockdown_end_time) {
+        public void setLockdown_end_time(Date lockdown_end_time) {
             this.lockdown_end_time = lockdown_end_time;
         }
 
@@ -184,6 +196,14 @@ public class ConfigurationManager {
 
         public void setTries(int tries) {
             this.tries = tries;
+        }
+
+        public boolean getIs_destructed() {
+            return is_destructed;
+        }
+
+        public void setIs_destructed(boolean is_destructed) {
+            this.is_destructed = is_destructed;
         }
 
         public boolean getSelf_destruct() {
@@ -231,5 +251,11 @@ public class ConfigurationManager {
 class LockdownModeException extends RuntimeException {
     LockdownModeException(String message) {
         super(message);
+    }
+}
+
+class VaultDestructedException extends RuntimeException {
+    VaultDestructedException() {
+        super("Vault is destructed.");
     }
 }
