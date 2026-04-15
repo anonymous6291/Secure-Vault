@@ -1,10 +1,11 @@
 package com.securevault;
 
 public class Main {
-    static void main() throws Exception{
+    static void main() throws Exception {
         String password = "Hello";
-        //try (Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray())) {
-        try (Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault/vault.zip", false, password.toCharArray())) {
+        try {
+            //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray());
+            Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault", false, password.toCharArray());
             //ConfigurationManager configurationManager = new ConfigurationManager(null, true, null);
             //IO.println(CipherManager.getCipher("Hello".toCharArray(), new byte[]{1, 2, 3, 4, 5}, new byte[]{1, 2, 3, 4, 5, 65, 9}, true));
             //Logger.clearLogs();
