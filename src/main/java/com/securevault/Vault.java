@@ -119,11 +119,11 @@ public class Vault {
         try {
             isVaultOpen = false;
             int n = vaultKey.length;
+            configurationManager.writeConfiguration();
+            Logger.close();
             for (int i = 0; i < n; i++) {
                 vaultKey[i] = 0;
             }
-            configurationManager.writeConfiguration();
-            Logger.close();
         } catch (Exception e) {
             throw new VaultException("Exception occurred while performing shutdown tasks of Vault : " + e);
         }

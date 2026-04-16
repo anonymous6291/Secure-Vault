@@ -9,7 +9,6 @@ import java.io.BufferedReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.text.DateFormat;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -33,10 +32,10 @@ public class Logger {
         }
         try {
             if (Files.isRegularFile(encryptedLogFile)) {
-                try (CipherInputStream cipherInputStream = new CipherInputStream(Files.newInputStream(encryptedLogFile), CipherManager.getCipher(key, configurations.iv(), configurations.salt(), false)); BufferedOutputStream fileOutputStream = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile))) {
+                try (CipherInputStream cipherInputStream = new CipherInputStream(Files.newInputStream(encryptedLogFile), CipherManager.getCipher(key, configurations.iv(), configurations.salt(), Cipher.DECRYPT_MODE)); BufferedOutputStream fileOutputStream = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile))) {
                     cipherInputStream.transferTo(fileOutputStream);
                 } catch (Exception e) {
-                    IO.println("Exception occurred while reading encrypted file : " + e);
+                    IO.println("Exception occurred while reading log : " + e);
                 }
             }
             if (!Files.exists(decryptedLogFile)) {
@@ -161,7 +160,7 @@ public class Logger {
 
     private static void close0() throws Exception {
         logFileWriter.close();
-        Cipher cipher = CipherManager.getCipher(encryptionKey, configurations.iv(), configurations.salt(), true);
+        Cipher cipher = CipherManager.getCipher(encryptionKey, configurations.iv(), configurations.salt(), Cipher.ENCRYPT_MODE);
         CipherOutputStream cipherOutputStream = new CipherOutputStream(Files.newOutputStream(encrLogFile), cipher);
         BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decrLogFile));
         bufferedInputStream.transferTo(cipherOutputStream);

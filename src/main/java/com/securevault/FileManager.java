@@ -1,5 +1,7 @@
 package com.securevault;
 
+import javax.crypto.Cipher;
+import java.io.BufferedInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -26,14 +28,17 @@ public class FileManager {
             Files.createDirectories(fileStoragePath);
         }
         allFiles = new HashMap<>();
-        byte[] encryptedData = Files.readAllBytes(fileDataPath);
+        BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(fileDataPath));
+        byte[] iv = bufferedInputStream.readNBytes(ConfigurationDefaults.IV_LENGTH);
+        byte[] salt = bufferedInputStream.readNBytes(ConfigurationDefaults.SALT_LENGTH);
+        Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.DECRYPT_MODE);
     }
 }
 
 class FileData {
-    private String originalName;
     private final String maskedName;
     private final long fileLength;
+    private String originalName;
 
     FileData(String originalName, String maskedName, long fileLength) {
         this.originalName = originalName;

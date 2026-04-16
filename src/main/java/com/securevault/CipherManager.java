@@ -23,15 +23,11 @@ public class CipherManager {
         return new SecretKeySpec(secretKey.getEncoded(), SECRET_KEY_SPEC_PROVIDER);
     }
 
-    public static Cipher getCipher(char[] password, byte[] iv, byte[] salt, boolean encryptMode) throws Exception {
+    public static Cipher getCipher(char[] password, byte[] iv, byte[] salt, int mode) throws Exception {
         Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM);
         SecretKey secretKey = deriveKey(password, salt);
         GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
-        if (encryptMode) {
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmParameterSpec);
-        } else {
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmParameterSpec);
-        }
+        cipher.init(mode, secretKey, gcmParameterSpec);
         return cipher;
     }
 }

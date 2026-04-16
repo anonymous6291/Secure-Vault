@@ -14,21 +14,20 @@ import java.util.Date;
 public class ConfigurationManager {
     private static final String VERSION = "1.0.0";
     private static final int KEY_LENGTH = 50;
-    private static final int IV_LENGTH = 12;
-    private static final int SALT_LENGTH = 16;
     private static final int MAX_TRIES = 5;
     private static final int PER_DAY_MAX_TRIES = 15;
     private static final long WRONG_TRY_DELAY_MILLIS = 5 * 60 * 1000;
     private static final ObjectMapper json = new ObjectMapper();
     private static final Base64.Encoder base64Encoder = Base64.getEncoder();
     private static final Base64.Decoder base64Decoder = Base64.getDecoder();
-    private final Path configurationPath;
-    private final Configuration configuration;
-    private final char[] vaultKey;
 
     static {
         json.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
+
+    private final Path configurationPath;
+    private final Configuration configuration;
+    private final char[] vaultKey;
 
     ConfigurationManager(Path config, boolean create, char[] key) throws Exception {
         configurationPath = config;
@@ -36,14 +35,14 @@ public class ConfigurationManager {
         if (create) {
             byte[] generatedChar = RandomValueGenerator.generateSecureBytes(KEY_LENGTH);
             vaultKey = base64Encoder.encodeToString(generatedChar).toCharArray();
-            byte[] iv = RandomValueGenerator.generateSecureBytes(IV_LENGTH);
-            byte[] salt = RandomValueGenerator.generateSecureBytes(SALT_LENGTH);
-            Cipher cipher = CipherManager.getCipher(key, iv, salt, true);
+            byte[] iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
+            byte[] salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+            Cipher cipher = CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE);
             byte[] encr = cipher.doFinal(generatedChar);
             configuration = new Configuration(VERSION, false, new Date(), 0, false, false, 0, base64Encoder.encodeToString(encr), base64Encoder.encodeToString(iv), base64Encoder.encodeToString(salt));
         } else {
             byte[] configData = Files.readAllBytes(config);
-            Cipher cipher = CipherManager.getCipher(configurationManagerData.key(), configurationManagerData.iv(), configurationManagerData.salt(), false);
+            Cipher cipher = CipherManager.getCipher(configurationManagerData.key(), configurationManagerData.iv(), configurationManagerData.salt(), Cipher.DECRYPT_MODE);
             String configString = new String(cipher.doFinal(configData), StandardCharsets.UTF_16);
             configuration = json.readValue(configString, Configuration.class);
             IO.println(configString);
@@ -57,7 +56,7 @@ public class ConfigurationManager {
             byte[] iv = base64Decoder.decode(configuration.getIv());
             byte[] salt = base64Decoder.decode(configuration.getSalt());
             try {
-                Cipher cipher1 = CipherManager.getCipher(key, iv, salt, false);
+                Cipher cipher1 = CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE);
                 byte[] decrKey = cipher1.doFinal(encrKey);
                 vaultKey = base64Encoder.encodeToString(decrKey).toCharArray();
                 configuration.setLockdown(false);
@@ -94,7 +93,7 @@ public class ConfigurationManager {
         byte[] iv = base64Decoder.decode(configuration.getIv());
         byte[] salt = base64Decoder.decode(configuration.getSalt());
         byte[] old = base64Decoder.decode(new String(vaultKey));
-        Cipher cipher = CipherManager.getCipher(newKey, iv, salt, true);
+        Cipher cipher = CipherManager.getCipher(newKey, iv, salt, Cipher.ENCRYPT_MODE);
         byte[] encrypted = cipher.doFinal(old);
         configuration.setKey(base64Encoder.encodeToString(encrypted));
     }
@@ -135,7 +134,7 @@ public class ConfigurationManager {
         ConfigurationDefaults.Data defaultConfigurationManagerData = ConfigurationDefaults.getDefault(ConfigurationManager.class);
         String configData = json.writeValueAsString(configuration);
         byte[] data = configData.getBytes(StandardCharsets.UTF_16);
-        Cipher cipher = CipherManager.getCipher(defaultConfigurationManagerData.key(), defaultConfigurationManagerData.iv(), defaultConfigurationManagerData.salt(), true);
+        Cipher cipher = CipherManager.getCipher(defaultConfigurationManagerData.key(), defaultConfigurationManagerData.iv(), defaultConfigurationManagerData.salt(), Cipher.ENCRYPT_MODE);
         data = cipher.doFinal(data);
         Files.write(configurationPath, data);
     }
