@@ -39,6 +39,7 @@ public class Main {
                     case "gl" -> IO.println(vault.getFilesList());
                     case "cl" -> Logger.clearLogs();
                     case "l" -> IO.println(Logger.getLogs(200));
+                    case "ab" -> vault.abortAllFileTransfers();
                 }
             } catch (Exception e) {
                 IO.println(e);

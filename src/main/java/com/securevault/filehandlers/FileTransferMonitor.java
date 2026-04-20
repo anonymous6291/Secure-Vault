@@ -3,11 +3,11 @@ package com.securevault.filehandlers;
 import java.util.List;
 
 public interface FileTransferMonitor {
-    int getNumberOfFilesPending();
+    int getNumberOfPendingFileTransfers();
 
-    int getNumberOfFilesFailed();
+    int getNumberOfFailedFileTransfers();
 
-    List<String> getFailedFilesList();
+    List<String> getFailedFileTransfersList();
 
-    double getProgress();
+    double getFileTransferProgress();
 }

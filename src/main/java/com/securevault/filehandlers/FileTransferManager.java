@@ -140,7 +140,7 @@ public class FileTransferManager implements FileTransferMonitor {
 
     public void transferFiles(List<FileTransferData> fileTransferDataList) {
         if (isShutdown()) {
-            throw new IllegalStateException("FileTransferManager is shutdown.");
+            throw new UnsupportedOperationException("FileTransferManager is shutdown.");
         }
         if (!acquireUniversalLock()) {
             return;
@@ -193,24 +193,24 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     @Override
-    public int getNumberOfFilesPending() {
+    public int getNumberOfPendingFileTransfers() {
         return numberOfPendingFiles.get();
     }
 
     @Override
-    public int getNumberOfFilesFailed() {
+    public int getNumberOfFailedFileTransfers() {
         return failedFiles.size();
     }
 
     @Override
-    public List<String> getFailedFilesList() {
+    public List<String> getFailedFileTransfersList() {
         List<String> result = failedFiles.stream().toList();
         failedFiles.clear();
         return result;
     }
 
     @Override
-    public double getProgress() {
+    public double getFileTransferProgress() {
         long data = dataToBeTransferred.get();
         if (data == 0) {
             return -1;

@@ -26,7 +26,7 @@ public class Logger {
     private static boolean initialized;
     private static char[] encryptionKey;
 
-    public static void init(Path encryptedLogFile, Path decryptedLogFile, char[] key) throws Exception {
+    public static void init(Path encryptedLogFile, Path decryptedLogFile, char[] key) {
         if (initialized) {
             return;
         }
@@ -173,7 +173,7 @@ public class Logger {
         Files.delete(decrLogFile);
     }
 
-    public static void close() throws Exception {
+    public static void close() {
         if (!initialized) {
             return;
         }

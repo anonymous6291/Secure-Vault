@@ -98,6 +98,10 @@ public class Vault {
         fileManager.getFiles(from, to);
     }
 
+    public boolean changeFileName(Path path, String newName) {
+        return fileManager.changeFileName(path, newName);
+    }
+
     public void deleteFile(Path path) {
         fileManager.deleteFile(path);
     }
@@ -135,7 +139,23 @@ public class Vault {
         closeVault();
     }
 
-    public void selfDestructVault(char[] password) {
+    public void setSelfDestruct(int tries) {
+        configurationManager.setSelfDestructMode(tries);
+    }
+
+    public void disableSelfDestruct() {
+        configurationManager.disableSelfDestructMode();
+    }
+
+    public boolean isSelfDestructEnabled() {
+        return configurationManager.isSelfDestructEnabled();
+    }
+
+    public int getSelfDestructTries() {
+        return configurationManager.getSelfDestructTries();
+    }
+
+    public void selfDestruct(char[] password) {
         if (different(this.password, password)) {
             Logger.logSevere("Vault destruction failed due to wrong vault key.");
             throw new VaultException("Wrong vault key. Vault not destructed.");

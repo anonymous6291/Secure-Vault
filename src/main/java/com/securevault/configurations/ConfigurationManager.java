@@ -113,6 +113,10 @@ public class ConfigurationManager {
         return configuration.getSelf_destruct();
     }
 
+    public int getSelfDestructTries() {
+        return configuration.getSelf_destruct_limit();
+    }
+
     public void disableSelfDestructMode() {
         configuration.setSelf_destruct(false);
         configuration.setSelf_destruct_limit(0);

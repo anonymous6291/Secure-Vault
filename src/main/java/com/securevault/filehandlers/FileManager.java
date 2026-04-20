@@ -222,13 +222,13 @@ public class FileManager implements FileTransferManagerListener {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                     if (fileCopyType == FileCopyOption.Type.RENAME) {
-                        fileCopyOption.setType(FileCopyOption.Type.ASK);
+                        fileCopyOption.resetType();
                     }
                     toFilePath = to.resolve(getNewMaskedFileName());
                     notes = Map.of("renamed", renameFile(originalFilePath, mode).getFileName().toString());
                 } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                     if (fileCopyType == FileCopyOption.Type.SKIP) {
-                        fileCopyOption.setType(FileCopyOption.Type.ASK);
+                        fileCopyOption.resetType();
                     }
                     return;
                 } else if (fileCopyType == FileCopyOption.Type.ASK) {
@@ -238,7 +238,7 @@ public class FileManager implements FileTransferManagerListener {
                     return;
                 } else {
                     if (fileCopyType == FileCopyOption.Type.REPLACE) {
-                        fileCopyOption.setType(FileCopyOption.Type.ASK);
+                        fileCopyOption.resetType();
                     }
                     FileData fileData = allFilesDataMapping.get(allFilesMaskedNameMapping.get(originalFilePath));
                     toFilePath = to.resolve(fileData.getMaskedName());
@@ -254,12 +254,12 @@ public class FileManager implements FileTransferManagerListener {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                     if (fileCopyType == FileCopyOption.Type.RENAME) {
-                        fileCopyOption.setType(FileCopyOption.Type.ASK);
+                        fileCopyOption.resetType();
                     }
                     toFilePath = renameFile(toFilePath, mode);
                 } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                     if (fileCopyType == FileCopyOption.Type.SKIP) {
-                        fileCopyOption.setType(FileCopyOption.Type.ASK);
+                        fileCopyOption.resetType();
                     }
                     return;
                 } else if (fileCopyType == FileCopyOption.Type.ASK) {
@@ -268,7 +268,7 @@ public class FileManager implements FileTransferManagerListener {
                     addFile0(from, to, mode, fileTransferDataList, fileCopyOption);
                     return;
                 } else if (fileCopyType == FileCopyOption.Type.REPLACE) {
-                    fileCopyOption.setType(FileCopyOption.Type.ASK);
+                    fileCopyOption.resetType();
                 }
             }
         }
@@ -419,10 +419,6 @@ public class FileManager implements FileTransferManagerListener {
             this.type = Type.ASK;
         }
 
-        static List<String> getOptions() {
-            return options;
-        }
-
         Type getType() {
             return type;
         }
@@ -440,6 +436,10 @@ public class FileManager implements FileTransferManagerListener {
                 case 4 -> Type.SKIP;
                 default -> Type.SKIP_ALL;
             };
+        }
+
+        void resetType() {
+            this.type = Type.ASK;
         }
 
         enum Type {
