@@ -381,6 +381,10 @@ public class FileManager implements FileTransferManagerListener {
         return fileDataList;
     }
 
+    public void abortAllFileTransfers() {
+        fileTransferManager.abortAllFileTransfers();
+    }
+
     public void close() throws Exception {
         if (!lock()) {
             return;

@@ -2,6 +2,7 @@ package com.securevault;
 
 import com.securevault.configurations.ConfigurationManager;
 import com.securevault.filehandlers.FileManager;
+import com.securevault.filehandlers.VaultException;
 import com.securevault.filehandlers.listeners.FileManagerUpdateListener;
 
 import javax.crypto.AEADBadTagException;
@@ -109,6 +110,10 @@ public class Vault {
         return fileManager.getFilesList();
     }
 
+    public void abortAllFileTransfers() {
+        fileManager.abortAllFileTransfers();
+    }
+
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {
         assertVaultKeyRequirement(newKey);
         if (different(password, currentPassword)) {
@@ -157,11 +162,5 @@ public class Vault {
         } catch (Exception e) {
             throw new VaultException("Exception occurred while performing shutdown tasks of Vault : " + e);
         }
-    }
-}
-
-class VaultException extends RuntimeException {
-    VaultException(String message) {
-        super(message);
     }
 }

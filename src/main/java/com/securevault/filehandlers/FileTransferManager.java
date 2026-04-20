@@ -22,17 +22,20 @@ import java.util.concurrent.atomic.AtomicLong;
 public class FileTransferManager implements FileTransferMonitor {
     private static final int MAX_PARALLEL_FILE_TRANSFERS = 5;
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
+    private final Semaphore universalLock = new Semaphore(1);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
     private final Duration DELAY = Duration.ofMillis(300);
     private final ConcurrentLinkedQueue<String> failedFiles = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<FileTransferHandler> pendingFiles = new ConcurrentLinkedQueue<>();
     private final AtomicInteger numberOfPendingFiles = new AtomicInteger(0);
+    private final AtomicInteger numberOfRunningFileTransfers = new AtomicInteger(0);
     private final AtomicLong dataToBeTransferred = new AtomicLong(0);
     private final AtomicLong dataTransferred = new AtomicLong(0);
     private final char[] key;
     private final FileTransferManagerListener fileTransferManagerListener;
     private int nextFileHandlerId;
     private volatile boolean shutdown;
+    private volatile boolean abortAllFileTransfers;
 
     FileTransferManager(char[] key, FileTransferManagerListener fileTransferManagerListener) {
         this.key = key;
@@ -48,8 +51,26 @@ public class FileTransferManager implements FileTransferMonitor {
             if (!pendingFiles.isEmpty()) {
                 try {
                     fileTransferLock.acquire();
-                    FileTransferHandler fileTransferHandler = pendingFiles.poll();
-                    new Thread(() -> transferFile(fileTransferHandler)).start();
+                    if (abortAllFileTransfers) {
+                        acquireUniversalLock();
+                        fileTransferLock.release();
+                        waitForRunningTransferHandlersToComplete();
+                        while (!pendingFiles.isEmpty()) {
+                            FileTransferHandler fileTransferHandler = pendingFiles.poll();
+                            numberOfPendingFiles.decrementAndGet();
+                            dataToBeTransferred.addAndGet(-fileTransferHandler.getDataToBeTransferred());
+                        }
+                        abortAllFileTransfers = false;
+                        releaseUniversalLock();
+                    } else {
+                        FileTransferHandler fileTransferHandler = pendingFiles.poll();
+                        if (fileTransferHandler == null) {
+                            fileTransferLock.release();
+                        } else {
+                            numberOfRunningFileTransfers.incrementAndGet();
+                            new Thread(() -> transferFile(fileTransferHandler)).start();
+                        }
+                    }
                 } catch (Exception _) {
                 }
             } else {
@@ -62,30 +83,38 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     private void transferFile(FileTransferHandler fileTransferHandler) {
-        Future<FileTransferStatus> result = executorService.submit(fileTransferHandler);
-        long last = 0;
-        while (!result.isDone()) {
-            long current = fileTransferHandler.getDataTransferred();
-            dataTransferred.addAndGet(current - last);
-            last = current;
+        if (!abortAllFileTransfers) {
+            Future<FileTransferStatus> result = executorService.submit(fileTransferHandler);
+            long last = 0;
+            while (!result.isDone()) {
+                if (abortAllFileTransfers) {
+                    fileTransferHandler.abortTransfer();
+                    break;
+                }
+                long current = fileTransferHandler.getDataTransferred();
+                dataTransferred.addAndGet(current - last);
+                last = current;
+                try {
+                    Thread.sleep(DELAY);
+                } catch (Exception _) {
+                }
+            }
             try {
-                Thread.sleep(DELAY);
+                FileTransferStatus fileTransferStatus = result.get();
+                if (fileTransferStatus == FileTransferStatus.FAILED) {
+                    Logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                    failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                    fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
+                } else if (fileTransferStatus == FileTransferStatus.COMPLETED) {
+                    fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
+                }
             } catch (Exception _) {
             }
+            dataTransferred.addAndGet(-last);
         }
-        dataTransferred.addAndGet(-last);
         dataToBeTransferred.addAndGet(-fileTransferHandler.getDataToBeTransferred());
-        try {
-            if (result.get() == FileTransferStatus.FAILED) {
-                Logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
-                failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
-                fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
-            } else {
-                fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
-            }
-        } catch (Exception _) {
-        }
         numberOfPendingFiles.decrementAndGet();
+        numberOfRunningFileTransfers.decrementAndGet();
         fileTransferLock.release();
     }
 
@@ -96,9 +125,25 @@ public class FileTransferManager implements FileTransferMonitor {
         new Thread(this::start0).start();
     }
 
+    private boolean acquireUniversalLock() {
+        try {
+            universalLock.acquire();
+            return true;
+        } catch (Exception _) {
+            return false;
+        }
+    }
+
+    private void releaseUniversalLock() {
+        universalLock.release();
+    }
+
     public void transferFiles(List<FileTransferData> fileTransferDataList) {
         if (isShutdown()) {
             throw new IllegalStateException("FileTransferManager is shutdown.");
+        }
+        if (!acquireUniversalLock()) {
+            return;
         }
         fileTransferDataList.forEach(fileTransferData -> {
             Path to = fileTransferData.to();
@@ -112,16 +157,34 @@ public class FileTransferManager implements FileTransferMonitor {
                 failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer.");
             }
         });
+        releaseUniversalLock();
     }
 
-    public void shutdown() {
-        shutdown = true;
+    public void abortAllFileTransfers() {
+        abortAllFileTransfers = true;
+    }
+
+    private void waitForRunningTransferHandlersToComplete() {
+        while (numberOfRunningFileTransfers.get() != 0) {
+            try {
+                Thread.sleep(DELAY);
+            } catch (Exception _) {
+            }
+        }
+    }
+
+    private void waitForAllTransfersToComplete() {
         while (numberOfPendingFiles.get() != 0) {
             try {
                 Thread.sleep(DELAY);
             } catch (Exception _) {
             }
         }
+    }
+
+    public void shutdown() {
+        shutdown = true;
+        waitForAllTransfersToComplete();
         executorService.shutdown();
     }
 
@@ -156,7 +219,7 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     public enum FileTransferStatus {
-        FAILED, PENDING, COMPLETED
+        FAILED, PENDING, COMPLETED, ABORTED
     }
 
     static class FileTransferHandler implements Callable<FileTransferStatus> {
@@ -170,6 +233,7 @@ public class FileTransferManager implements FileTransferMonitor {
         private final long dataToBeTransferred;
         private final AtomicLong dataTransferred;
         private volatile FileTransferStatus fileTransferStatus;
+        private volatile boolean abortTransfer;
 
         FileTransferHandler(FileTransferData fileTransferData, char[] key, int id) {
             this.fileTransferData = fileTransferData;
@@ -182,6 +246,7 @@ public class FileTransferManager implements FileTransferMonitor {
             dataToBeTransferred = fromFile.length();
             dataTransferred = new AtomicLong(0);
             fileTransferStatus = FileTransferStatus.PENDING;
+            abortTransfer = false;
         }
 
         @Override
@@ -209,19 +274,21 @@ public class FileTransferManager implements FileTransferMonitor {
                 CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
                 byte[] chunk = new byte[CHUNK_SIZE];
                 int len;
-                while ((len = bufferedInputStream.read(chunk)) > 0) {
+                while (!abortTransfer && (len = bufferedInputStream.read(chunk)) > 0) {
                     cipherOutputStream.write(chunk, 0, len);
                     dataTransferred.addAndGet(len);
                 }
                 cipherOutputStream.close();
+                if (abortTransfer) {
+                    return fileTransferStatus = FileTransferStatus.ABORTED;
+                }
             } catch (Exception e) {
                 Logger.logError("Transfer of [" + from + "] to [" + to + "] failed. : " + e);
                 fileTransferStatus = FileTransferStatus.FAILED;
                 return FileTransferStatus.FAILED;
             }
             Logger.logInfo("Transfer of [" + from + "] to [" + to + "] was successful.");
-            fileTransferStatus = FileTransferStatus.COMPLETED;
-            return FileTransferStatus.COMPLETED;
+            return fileTransferStatus = FileTransferStatus.COMPLETED;
         }
 
         public int getId() {
@@ -258,6 +325,10 @@ public class FileTransferManager implements FileTransferMonitor {
 
         public String getToFileName() {
             return to.toFile().getName();
+        }
+
+        public void abortTransfer() {
+            abortTransfer = true;
         }
     }
 }
