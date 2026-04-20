@@ -23,7 +23,7 @@ public class FileTransferManager implements FileTransferMonitor {
     private static final int MAX_PARALLEL_FILE_TRANSFERS = 5;
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
-    private final Duration delay = Duration.ofMillis(300);
+    private final Duration DELAY = Duration.ofMillis(300);
     private final ConcurrentLinkedQueue<String> failedFiles = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<FileTransferHandler> pendingFiles = new ConcurrentLinkedQueue<>();
     private final AtomicInteger numberOfPendingFiles = new AtomicInteger(0);
@@ -54,7 +54,7 @@ public class FileTransferManager implements FileTransferMonitor {
                 }
             } else {
                 try {
-                    Thread.sleep(delay);
+                    Thread.sleep(DELAY);
                 } catch (Exception _) {
                 }
             }
@@ -69,7 +69,7 @@ public class FileTransferManager implements FileTransferMonitor {
             dataTransferred.addAndGet(current - last);
             last = current;
             try {
-                Thread.sleep(delay);
+                Thread.sleep(DELAY);
             } catch (Exception _) {
             }
         }
@@ -79,10 +79,12 @@ public class FileTransferManager implements FileTransferMonitor {
             if (result.get() == FileTransferStatus.FAILED) {
                 Logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
                 failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
+            } else {
+                fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
             }
         } catch (Exception _) {
         }
-        fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.from, fileTransferHandler.to, fileTransferHandler.mode);
         numberOfPendingFiles.decrementAndGet();
         fileTransferLock.release();
     }
@@ -100,8 +102,7 @@ public class FileTransferManager implements FileTransferMonitor {
         }
         fileTransferDataList.forEach(fileTransferData -> {
             Path to = fileTransferData.to();
-            Path from = fileTransferData.from();
-            FileTransferHandler fileTransferHandler = new FileTransferHandler(from, to, key, fileTransferData.mode(), nextFileHandlerId++);
+            FileTransferHandler fileTransferHandler = new FileTransferHandler(fileTransferData, key, nextFileHandlerId++);
             try {
                 Files.createDirectories(to.getParent());
                 pendingFiles.offer(fileTransferHandler);
@@ -115,7 +116,12 @@ public class FileTransferManager implements FileTransferMonitor {
 
     public void shutdown() {
         shutdown = true;
-        while (numberOfPendingFiles.get() != 0) ;
+        while (numberOfPendingFiles.get() != 0) {
+            try {
+                Thread.sleep(DELAY);
+            } catch (Exception _) {
+            }
+        }
         executorService.shutdown();
     }
 
@@ -155,6 +161,7 @@ public class FileTransferManager implements FileTransferMonitor {
 
     static class FileTransferHandler implements Callable<FileTransferStatus> {
         private static final int CHUNK_SIZE = 1024 * 1024;
+        private final FileTransferData fileTransferData;
         private final Path from;
         private final Path to;
         private final char[] key;
@@ -164,11 +171,12 @@ public class FileTransferManager implements FileTransferMonitor {
         private final AtomicLong dataTransferred;
         private volatile FileTransferStatus fileTransferStatus;
 
-        FileTransferHandler(Path from, Path to, char[] key, FileTransferMode mode, int id) {
-            this.from = from;
-            this.to = to;
+        FileTransferHandler(FileTransferData fileTransferData, char[] key, int id) {
+            this.fileTransferData = fileTransferData;
+            this.from = fileTransferData.from();
+            this.to = fileTransferData.to();
             this.key = key;
-            this.mode = mode;
+            this.mode = fileTransferData.mode();
             this.id = id;
             File fromFile = from.toFile();
             dataToBeTransferred = fromFile.length();
@@ -226,6 +234,10 @@ public class FileTransferManager implements FileTransferMonitor {
 
         public FileTransferStatus getStatus() {
             return fileTransferStatus;
+        }
+
+        public FileTransferData getFileTransferData() {
+            return fileTransferData;
         }
 
         public long getDataToBeTransferred() {

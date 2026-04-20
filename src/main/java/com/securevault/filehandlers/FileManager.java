@@ -16,9 +16,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
@@ -79,7 +77,7 @@ public class FileManager implements FileTransferManagerListener {
                     if (!isValidFileName(maskedName)) {
                         Logger.logError("[" + maskedName + "] is not a valid file name, skipping it.");
                     } else {
-                        if (lastFileName.compareTo(maskedName) < 0) {
+                        if (smaller(lastFileName, maskedName)) {
                             lastFileName = maskedName;
                         }
                         FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
@@ -102,6 +100,12 @@ public class FileManager implements FileTransferManagerListener {
         }
     }
 
+    private boolean smaller(String first, String second) {
+        int n1 = first.length();
+        int n2 = second.length();
+        return n1 < n2 || (n1 == n2 && first.compareTo(second) < 0);
+    }
+
     private Path removeParent(Path childPath, Path parentPath) {
         String child = childPath.toString();
         String parent = parentPath.toString();
@@ -109,15 +113,31 @@ public class FileManager implements FileTransferManagerListener {
     }
 
     @Override
-    public void fileTransferCompleted(Path from, Path to, FileTransferMode mode) {
-        if (mode == FileTransferMode.ENCRYPT) {
+    public void fileTransferCompleted(FileTransferData fileTransferData) {
+        Path from = fileTransferData.from();
+        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
+            Path to = fileTransferData.to();
             File toFile = to.toFile();
-            String fromFileName = from.getFileName().toString();
+            String fromFileName;
+            if (fileTransferData.notes().containsKey("renamed")) {
+                fromFileName = fileTransferData.notes().get("renamed");
+            } else {
+                fromFileName = from.getFileName().toString();
+            }
             FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
             allFilesDataMapping.put(to, fileData);
             allFilesMaskedNameMapping.put(fileStoragePath.resolve(fileData.getOriginalFilePath()), to);
         }
         Logger.logInfo("File [" + from + "] transfer complete.");
+    }
+
+    @Override
+    public void fileTransferFailed(FileTransferData fileTransferData) {
+        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
+            fileManagerUpdateListener.newUpdate("Failed to add file [" + fileTransferData.from() + "] to the vault.");
+        } else {
+            fileManagerUpdateListener.newUpdate("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
+        }
     }
 
     private void incrementNextFileName() {
@@ -195,22 +215,24 @@ public class FileManager implements FileTransferManagerListener {
 
     private void addFile0(Path from, Path to, FileTransferMode mode, List<FileTransferData> fileTransferDataList, FileCopyOption fileCopyOption) {
         Path toFilePath;
+        Map<String, String> notes = null;
         if (mode == FileTransferMode.ENCRYPT) {
-            Path maskedPath = to.resolve(from.getFileName());
-            if (allFilesMaskedNameMapping.containsKey(maskedPath)) {
+            Path originalFilePath = to.resolve(from.getFileName());
+            if (allFilesMaskedNameMapping.containsKey(originalFilePath)) {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                     if (fileCopyType == FileCopyOption.Type.RENAME) {
                         fileCopyOption.setType(FileCopyOption.Type.ASK);
                     }
                     toFilePath = to.resolve(getNewMaskedFileName());
+                    notes = Map.of("renamed", renameFile(originalFilePath, mode).getFileName().toString());
                 } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                     if (fileCopyType == FileCopyOption.Type.SKIP) {
                         fileCopyOption.setType(FileCopyOption.Type.ASK);
                     }
                     return;
                 } else if (fileCopyType == FileCopyOption.Type.ASK) {
-                    int responseIndex = fileManagerUpdateListener.askForResponse("File [" + maskedPath + "] exists.", FileCopyOption.options);
+                    int responseIndex = fileManagerUpdateListener.askForResponse("File [" + originalFilePath + "] already exists in vault.", FileCopyOption.options);
                     fileCopyOption.setType(responseIndex);
                     addFile0(from, to, mode, fileTransferDataList, fileCopyOption);
                     return;
@@ -218,7 +240,7 @@ public class FileManager implements FileTransferManagerListener {
                     if (fileCopyType == FileCopyOption.Type.REPLACE) {
                         fileCopyOption.setType(FileCopyOption.Type.ASK);
                     }
-                    FileData fileData = allFilesDataMapping.get(allFilesMaskedNameMapping.get(maskedPath));
+                    FileData fileData = allFilesDataMapping.get(allFilesMaskedNameMapping.get(originalFilePath));
                     toFilePath = to.resolve(fileData.getMaskedName());
                 }
             } else {
@@ -231,10 +253,10 @@ public class FileManager implements FileTransferManagerListener {
             if (Files.exists(toFilePath)) {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
-                    toFilePath = renameFile(toFilePath, mode);
                     if (fileCopyType == FileCopyOption.Type.RENAME) {
                         fileCopyOption.setType(FileCopyOption.Type.ASK);
                     }
+                    toFilePath = renameFile(toFilePath, mode);
                 } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                     if (fileCopyType == FileCopyOption.Type.SKIP) {
                         fileCopyOption.setType(FileCopyOption.Type.ASK);
@@ -250,7 +272,7 @@ public class FileManager implements FileTransferManagerListener {
                 }
             }
         }
-        FileTransferData fileTransferData = new FileTransferData(from, toFilePath, mode);
+        FileTransferData fileTransferData = new FileTransferData(from, toFilePath, mode, notes == null ? Map.of() : notes);
         fileTransferDataList.add(fileTransferData);
     }
 
@@ -351,8 +373,10 @@ public class FileManager implements FileTransferManagerListener {
         if (!lock()) {
             return null;
         }
-        List<String> fileDataList = allFilesDataMapping.values().stream().map(fileData -> fileData.getOriginalFilePath().toString()).toList();
+        List<String> fileDataList = new ArrayList<>();
+        allFilesDataMapping.values().stream().map(fileData -> fileData.getOriginalFilePath().toString()).forEach(fileDataList::add);
         unlock();
+        fileDataList.sort(String::compareTo);
         Logger.logInfo("All files list accessed.");
         return fileDataList;
     }

@@ -1,9 +1,9 @@
 package com.securevault.filehandlers.listeners;
 
-import com.securevault.filehandlers.FileTransferMode;
-
-import java.nio.file.Path;
+import com.securevault.filehandlers.FileTransferData;
 
 public interface FileTransferManagerListener {
-    void fileTransferCompleted(Path from, Path to, FileTransferMode mode);
+    void fileTransferCompleted(FileTransferData fileTransferData);
+
+    void fileTransferFailed(FileTransferData fileTransferData);
 }

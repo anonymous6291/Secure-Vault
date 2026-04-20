@@ -8,9 +8,8 @@ import java.util.List;
 
 public class Main {
     static void main() throws Exception {
-        String password1 = "WORLD";
-        String password = "Hello";
-        Path path;
+        String password = "WORLD";
+        String password1 = "Hello";
         FileManagerUpdateListener fileManagerUpdateListener = new FileManagerUpdateListener() {
             @Override
             public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor) {
@@ -28,18 +27,21 @@ public class Main {
         };
         //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray(), fileManagerUpdateListener);
         Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault", false, password.toCharArray(), fileManagerUpdateListener);
-        //Logger.clearLogs();
         //vault.changeVaultPassword(password.toCharArray(), password1.toCharArray());
         String option;
         while (!(option = IO.readln("Enter the option:")).equals("E")) {
-            switch (option) {
-                case "pf" -> vault.putFiles(Path.of(IO.readln("Path:")));
-                case "gf" -> vault.getFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
-                case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
-                case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
-                case "gl" -> IO.println(vault.getFilesList());
-                case "cl" -> Logger.clearLogs();
-                case "l" -> IO.println(Logger.getLogs(200));
+            try {
+                switch (option) {
+                    case "pf" -> vault.putFiles(Path.of(IO.readln("Path:")));
+                    case "gf" -> vault.getFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
+                    case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
+                    case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
+                    case "gl" -> IO.println(vault.getFilesList());
+                    case "cl" -> Logger.clearLogs();
+                    case "l" -> IO.println(Logger.getLogs(200));
+                }
+            } catch (Exception e) {
+                IO.println(e);
             }
         }
         vault.closeVault();
