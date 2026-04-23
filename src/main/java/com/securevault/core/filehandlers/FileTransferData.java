@@ -1,4 +1,4 @@
-package com.securevault.filehandlers;
+package com.securevault.core.filehandlers;
 
 import java.nio.file.Path;
 import java.util.Map;

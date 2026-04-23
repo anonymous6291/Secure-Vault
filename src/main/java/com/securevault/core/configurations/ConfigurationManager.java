@@ -1,4 +1,4 @@
-package com.securevault.configurations;
+package com.securevault.core.configurations;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -89,6 +89,10 @@ public class ConfigurationManager {
         }
     }
 
+    public String getVersion() {
+        return configuration.getVersion();
+    }
+
     public void changeKey(char[] newKey) throws Exception {
         byte[] iv = base64Decoder.decode(configuration.getIv());
         byte[] salt = base64Decoder.decode(configuration.getSalt());
@@ -109,17 +113,13 @@ public class ConfigurationManager {
         configuration.setKey(base64Encoder.encodeToString(RandomValueGenerator.generateSecureBytes(configuration.getKey().length())));
     }
 
-    public boolean isSelfDestructEnabled() {
-        return configuration.getSelf_destruct();
-    }
-
-    public int getSelfDestructTries() {
-        return configuration.getSelf_destruct_limit();
-    }
-
     public void disableSelfDestructMode() {
         configuration.setSelf_destruct(false);
         configuration.setSelf_destruct_limit(0);
+    }
+
+    public boolean isSelfDestructEnabled() {
+        return configuration.getSelf_destruct();
     }
 
     public void setSelfDestructMode(int tries) {
@@ -129,6 +129,10 @@ public class ConfigurationManager {
             configuration.setSelf_destruct(true);
             configuration.setSelf_destruct_limit(tries);
         }
+    }
+
+    public int getSelfDestructTries() {
+        return configuration.getSelf_destruct_limit();
     }
 
     public char[] getVaultKey() {

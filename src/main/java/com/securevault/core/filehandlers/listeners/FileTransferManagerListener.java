@@ -1,6 +1,6 @@
-package com.securevault.filehandlers.listeners;
+package com.securevault.core.filehandlers.listeners;
 
-import com.securevault.filehandlers.FileTransferData;
+import com.securevault.core.filehandlers.FileTransferData;
 
 public interface FileTransferManagerListener {
     void fileTransferCompleted(FileTransferData fileTransferData);

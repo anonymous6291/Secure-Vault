@@ -1,4 +1,4 @@
-package com.securevault.filehandlers;
+package com.securevault.core.filehandlers;
 
 import java.util.List;
 

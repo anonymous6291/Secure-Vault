@@ -1,6 +1,6 @@
-package com.securevault.configurations;
+package com.securevault.core.configurations;
 
-import com.securevault.Logger;
+import com.securevault.core.Logger;
 
 public class ConfigurationDefaults {
     public static final int IV_LENGTH = 12;

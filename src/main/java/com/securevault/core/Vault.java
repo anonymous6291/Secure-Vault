@@ -1,9 +1,9 @@
-package com.securevault;
+package com.securevault.core;
 
-import com.securevault.configurations.ConfigurationManager;
-import com.securevault.filehandlers.FileManager;
-import com.securevault.filehandlers.VaultException;
-import com.securevault.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.configurations.ConfigurationManager;
+import com.securevault.core.filehandlers.FileManager;
+import com.securevault.core.filehandlers.VaultException;
+import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
 
 import javax.crypto.AEADBadTagException;
 import java.io.FileNotFoundException;
@@ -23,6 +23,7 @@ public class Vault {
     private final ConfigurationManager configurationManager;
     private final FileManager fileManager;
     private final String vaultPath;
+    private final Logger logger;
     private final char[] vaultKey;
     private char[] password;
     private volatile boolean isVaultOpen;
@@ -54,9 +55,9 @@ public class Vault {
             throw new VaultException("Invalid password.");
         }
         vaultKey = configurationManager.getVaultKey();
-        Logger.init(getPath(ENCRYPTED_LOG_FILE_NAME), getPath(DECRYPTED_LOG_FILE_NAME), vaultKey);
-        Logger.logInfo("Vault opened.");
-        fileManager = new FileManager(vaultPath, vaultKey, fileManagerUpdateListener);
+        logger = new Logger(getPath(ENCRYPTED_LOG_FILE_NAME), getPath(DECRYPTED_LOG_FILE_NAME), vaultKey);
+        logger.logInfo("Vault opened.");
+        fileManager = new FileManager(vaultPath, vaultKey, fileManagerUpdateListener, logger);
         IO.println(new String(vaultKey));
         isVaultOpen = true;
     }
@@ -121,13 +122,13 @@ public class Vault {
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {
         assertVaultKeyRequirement(newKey);
         if (different(password, currentPassword)) {
-            Logger.logSevere("Changing of vault password failed due to wrong initial password.");
+            logger.logSevere("Changing of vault password failed due to wrong initial password.");
             throw new VaultException("Wrong vault password. Initial password not changed.");
         }
         char[] cloned = newKey.clone();
         configurationManager.changeKey(cloned);
         password = cloned;
-        Logger.logWarn("Vault password changed.");
+        logger.logWarn("Vault password changed.");
     }
 
     public boolean isVaultOpen() {
@@ -143,6 +144,10 @@ public class Vault {
         configurationManager.setSelfDestructMode(tries);
     }
 
+    public int getSelfDestructTries() {
+        return configurationManager.getSelfDestructTries();
+    }
+
     public void disableSelfDestruct() {
         configurationManager.disableSelfDestructMode();
     }
@@ -151,31 +156,35 @@ public class Vault {
         return configurationManager.isSelfDestructEnabled();
     }
 
-    public int getSelfDestructTries() {
-        return configurationManager.getSelfDestructTries();
-    }
-
     public void selfDestruct(char[] password) {
         if (different(this.password, password)) {
-            Logger.logSevere("Vault destruction failed due to wrong vault key.");
+            logger.logSevere("Vault destruction failed due to wrong vault key.");
             throw new VaultException("Wrong vault key. Vault not destructed.");
         }
-        Logger.logWarn("Vault entered self destruction mode.");
+        logger.logWarn("Vault entered self destruction mode.");
         configurationManager.selfDestruct();
         closeVault();
+    }
+
+    public String getVersion() {
+        return configurationManager.getVersion();
+    }
+
+    public Logger getLogger() {
+        return logger;
     }
 
     public void closeVault() {
         if (!isVaultOpen()) {
             return;
         }
-        Logger.logInfo("Closing vault.");
+        logger.logInfo("Closing vault.");
         try {
             isVaultOpen = false;
             int n = vaultKey.length;
             configurationManager.writeConfiguration();
             fileManager.close();
-            Logger.close();
+            logger.close();
             for (int i = 0; i < n; i++) {
                 vaultKey[i] = 0;
             }

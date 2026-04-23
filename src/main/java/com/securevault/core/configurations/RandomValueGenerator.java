@@ -1,4 +1,4 @@
-package com.securevault.configurations;
+package com.securevault.core.configurations;
 
 import java.security.SecureRandom;
 import java.util.Random;

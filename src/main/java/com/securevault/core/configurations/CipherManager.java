@@ -1,4 +1,4 @@
-package com.securevault.configurations;
+package com.securevault.core.configurations;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;

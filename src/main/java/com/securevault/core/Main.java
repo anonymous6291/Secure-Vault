@@ -1,7 +1,7 @@
-package com.securevault;
+package com.securevault.core;
 
-import com.securevault.filehandlers.FileTransferMonitor;
-import com.securevault.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.FileTransferMonitor;
+import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -27,6 +27,7 @@ public class Main {
         };
         //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray(), fileManagerUpdateListener);
         Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault", false, password.toCharArray(), fileManagerUpdateListener);
+        Logger logger = vault.getLogger();
         //vault.changeVaultPassword(password.toCharArray(), password1.toCharArray());
         String option;
         while (!(option = IO.readln("Enter the option:")).equals("E")) {
@@ -37,8 +38,8 @@ public class Main {
                     case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
                     case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
                     case "gl" -> IO.println(vault.getFilesList());
-                    case "cl" -> Logger.clearLogs();
-                    case "l" -> IO.println(Logger.getLogs(200));
+                    case "cl" -> logger.clearLogs();
+                    case "l" -> IO.println(logger.getLogs(200));
                     case "ab" -> vault.abortAllFileTransfers();
                 }
             } catch (Exception e) {

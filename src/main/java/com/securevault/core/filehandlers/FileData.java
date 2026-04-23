@@ -1,11 +1,11 @@
-package com.securevault.filehandlers;
+package com.securevault.core.filehandlers;
 
 import java.nio.file.Path;
 
 public class FileData {
+    private String originalName;
     private final String maskedName;
     private final long fileLength;
-    private String originalName;
     private String filePath;
 
     public FileData(String originalName, String maskedName, long fileLength, String filePath) {

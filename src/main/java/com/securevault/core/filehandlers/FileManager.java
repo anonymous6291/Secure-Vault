@@ -1,11 +1,11 @@
-package com.securevault.filehandlers;
+package com.securevault.core.filehandlers;
 
-import com.securevault.Logger;
-import com.securevault.configurations.CipherManager;
-import com.securevault.configurations.ConfigurationDefaults;
-import com.securevault.configurations.RandomValueGenerator;
-import com.securevault.filehandlers.listeners.FileManagerUpdateListener;
-import com.securevault.filehandlers.listeners.FileTransferManagerListener;
+import com.securevault.core.Logger;
+import com.securevault.core.configurations.CipherManager;
+import com.securevault.core.configurations.ConfigurationDefaults;
+import com.securevault.core.configurations.RandomValueGenerator;
+import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
@@ -36,11 +36,13 @@ public class FileManager implements FileTransferManagerListener {
     private final ConcurrentMap<Path, Path> allFilesMaskedNameMapping;
     private final FileTransferManager fileTransferManager;
     private final FileManagerUpdateListener fileManagerUpdateListener;
+    private final Logger logger;
     private volatile char[] nextMaskedFileName;
 
-    public FileManager(Path basePath, char[] vaultKey, FileManagerUpdateListener fileManagerUpdateListener) throws Exception {
-        fileDataPath = basePath.resolve(FILE_DATA_NAME);
-        fileStoragePath = basePath.resolve(FILE_STORAGE_FOLDER_NAME);
+    public FileManager(Path basePath, char[] vaultKey, FileManagerUpdateListener fileManagerUpdateListener, Logger logger) throws Exception {
+        this.logger = logger;
+        fileDataPath = Path.of(basePath.toString(), FILE_DATA_NAME);
+        fileStoragePath = Path.of(basePath.toString(), FILE_STORAGE_FOLDER_NAME);
         if (!Files.isRegularFile(fileDataPath)) {
             Files.createFile(fileDataPath);
         }
@@ -53,7 +55,7 @@ public class FileManager implements FileTransferManagerListener {
         allFilesMaskedNameMapping = new ConcurrentHashMap<>();
         File dataFile = fileDataPath.toFile();
         String lastFileName = "0";
-        Logger.logInfo("FileManager started.");
+        logger.logInfo("FileManager started.");
         if (dataFile.length() > 0) {
             BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(fileDataPath));
             iv = bufferedInputStream.readNBytes(ConfigurationDefaults.IV_LENGTH);
@@ -68,31 +70,31 @@ public class FileManager implements FileTransferManagerListener {
                 String path = data[i - 2];
                 String maskedName = data[i - 1];
                 String originalName = data[i];
-                Path mainPath = fileStoragePath.resolve(path);
-                Path maskedFilePath = mainPath.resolve(maskedName);
+                Path mainPath = Path.of(fileStoragePath.toString(), path);
+                Path maskedFilePath = Path.of(mainPath.toString(), maskedName);
                 File file = maskedFilePath.toFile();
                 if (!file.exists()) {
-                    Logger.logError("File [" + originalName + "] has entry but doesn't exist, skipping it.");
+                    logger.logError("File [" + originalName + "] has entry but doesn't exist, skipping it.");
                 } else {
                     if (!isValidFileName(maskedName)) {
-                        Logger.logError("[" + maskedName + "] is not a valid file name, skipping it.");
+                        logger.logError("[" + maskedName + "] is not a valid file name, skipping it.");
                     } else {
                         if (smaller(lastFileName, maskedName)) {
                             lastFileName = maskedName;
                         }
                         FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
                         allFilesDataMapping.put(maskedFilePath, currentFileData);
-                        allFilesMaskedNameMapping.put(mainPath.resolve(originalName), maskedFilePath);
+                        allFilesMaskedNameMapping.put(Path.of(mainPath.toString(), originalName), maskedFilePath);
                     }
                 }
             }
-            Logger.logInfo("Total [" + allFilesDataMapping.size() + "] file entries scanned.");
+            logger.logInfo("Total [" + allFilesDataMapping.size() + "] file entries scanned.");
         } else {
             iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
             salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
         }
         this.nextMaskedFileName = lastFileName.toCharArray();
-        fileTransferManager = new FileTransferManager(vaultKey, this);
+        fileTransferManager = new FileTransferManager(vaultKey, this, logger);
         fileTransferManager.start();
         fileManagerUpdateListener.setFileTransferMonitor(fileTransferManager);
         if (!allFilesDataMapping.isEmpty()) {
@@ -110,34 +112,6 @@ public class FileManager implements FileTransferManagerListener {
         String child = childPath.toString();
         String parent = parentPath.toString();
         return Path.of(child.substring(child.indexOf(parent) + parent.length() + 1));
-    }
-
-    @Override
-    public void fileTransferCompleted(FileTransferData fileTransferData) {
-        Path from = fileTransferData.from();
-        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
-            Path to = fileTransferData.to();
-            File toFile = to.toFile();
-            String fromFileName;
-            if (fileTransferData.notes().containsKey("renamed")) {
-                fromFileName = fileTransferData.notes().get("renamed");
-            } else {
-                fromFileName = from.getFileName().toString();
-            }
-            FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
-            allFilesDataMapping.put(to, fileData);
-            allFilesMaskedNameMapping.put(fileStoragePath.resolve(fileData.getOriginalFilePath()), to);
-        }
-        Logger.logInfo("File [" + from + "] transfer complete.");
-    }
-
-    @Override
-    public void fileTransferFailed(FileTransferData fileTransferData) {
-        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
-            fileManagerUpdateListener.newUpdate("Failed to add file [" + fileTransferData.from() + "] to the vault.");
-        } else {
-            fileManagerUpdateListener.newUpdate("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
-        }
     }
 
     private void incrementNextFileName() {
@@ -207,7 +181,7 @@ public class FileManager implements FileTransferManagerListener {
         }
         int start = 1;
         Path newFilePath;
-        while (fileExists(newFilePath = parent.resolve(firstName + start + extension), mode)) {
+        while (fileExists(newFilePath = Path.of(parent.toString(), firstName + start + extension), mode)) {
             start++;
         }
         return newFilePath;
@@ -217,14 +191,14 @@ public class FileManager implements FileTransferManagerListener {
         Path toFilePath;
         Map<String, String> notes = null;
         if (mode == FileTransferMode.ENCRYPT) {
-            Path originalFilePath = to.resolve(from.getFileName());
+            Path originalFilePath = Path.of(to.toString(), from.getFileName().toString());
             if (allFilesMaskedNameMapping.containsKey(originalFilePath)) {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                     if (fileCopyType == FileCopyOption.Type.RENAME) {
                         fileCopyOption.resetType();
                     }
-                    toFilePath = to.resolve(getNewMaskedFileName());
+                    toFilePath = Path.of(to.toString(), getNewMaskedFileName());
                     notes = Map.of("renamed", renameFile(originalFilePath, mode).getFileName().toString());
                 } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                     if (fileCopyType == FileCopyOption.Type.SKIP) {
@@ -248,6 +222,9 @@ public class FileManager implements FileTransferManagerListener {
             }
         } else {
             FileData fileData = allFilesDataMapping.get(from);
+            if (fileData == null) {
+                return;
+            }
             String originalFileName = fileData.getOriginalName();
             toFilePath = to.resolve(originalFileName);
             if (Files.exists(toFilePath)) {
@@ -282,7 +259,7 @@ public class FileManager implements FileTransferManagerListener {
             try (Stream<Path> pathStream = Files.list(from)) {
                 pathStream.forEach(fromSubDirectory -> recursivelyAddFiles(fromSubDirectory, toSubDirectory, mode, fileTransferDataList, fileCopyOption));
             } catch (Exception e) {
-                Logger.logError("Exception occurred while traversing files : " + e);
+                logger.logError("Exception occurred while traversing files : " + e);
             }
         } else if (Files.isRegularFile(from)) {
             addFile0(from, to, mode, fileTransferDataList, fileCopyOption);
@@ -311,7 +288,7 @@ public class FileManager implements FileTransferManagerListener {
     public boolean changeFileName(Path path, String newOriginalName) {
         Path maskedPath = allFilesMaskedNameMapping.remove(path);
         if (maskedPath == null) {
-            Logger.logError("Attempted to rename a file which doesn't has entry.");
+            logger.logError("Attempted to rename a file which doesn't has entry.");
             return false;
         }
         FileData fileData = allFilesDataMapping.get(maskedPath);
@@ -329,7 +306,7 @@ public class FileManager implements FileTransferManagerListener {
         try {
             Files.delete(maskedFilePath);
         } catch (Exception e) {
-            Logger.logError("Failed to delete file [" + originalFilePath + "] : " + e);
+            logger.logError("Failed to delete file [" + originalFilePath + "] : " + e);
         }
     }
 
@@ -337,8 +314,8 @@ public class FileManager implements FileTransferManagerListener {
         if (!lock()) {
             return;
         }
-        Path filePath = fileStoragePath.resolve(path);
-        Logger.logWarn("Deleting file [" + path + "] .");
+        Path filePath = Path.of(fileStoragePath.toString(), path.toString());
+        logger.logWarn("Deleting file [" + path + "] .");
         deleteFile0(filePath);
         unlock();
     }
@@ -349,11 +326,13 @@ public class FileManager implements FileTransferManagerListener {
                 files.forEach(this::deleteDirectory0);
                 Files.delete(filePath);
             } catch (Exception e) {
-                Logger.logError("Failed to delete directory [" + filePath + "] : " + e);
+                logger.logError("Failed to delete directory [" + filePath + "] : " + e);
             }
         } else {
             FileData fileData = allFilesDataMapping.get(filePath);
-            deleteFile0(fileStoragePath.resolve(fileData.getOriginalFilePath()));
+            if (fileData != null) {
+                deleteFile0(fileStoragePath.resolve(fileData.getOriginalFilePath()));
+            }
         }
     }
 
@@ -361,9 +340,9 @@ public class FileManager implements FileTransferManagerListener {
         if (!lock()) {
             return;
         }
-        Path fileToBeDeleted = fileStoragePath.resolve(path);
+        Path fileToBeDeleted = Path.of(fileStoragePath.toString(), path.toString());
         if (Files.isDirectory(fileToBeDeleted)) {
-            Logger.logWarn("Deleting directory [" + path + "] .");
+            logger.logWarn("Deleting directory [" + path + "] .");
             deleteDirectory0(fileToBeDeleted);
         }
         unlock();
@@ -377,7 +356,7 @@ public class FileManager implements FileTransferManagerListener {
         allFilesDataMapping.values().stream().map(fileData -> fileData.getOriginalFilePath().toString()).forEach(fileDataList::add);
         unlock();
         fileDataList.sort(String::compareTo);
-        Logger.logInfo("All files list accessed.");
+        logger.logInfo("All files list accessed.");
         return fileDataList;
     }
 
@@ -402,12 +381,40 @@ public class FileManager implements FileTransferManagerListener {
             }
             cipherOutputStream.write(FILE_DATA_END_MARKER.getBytes());
             cipherOutputStream.close();
-            Logger.logInfo("FileManager closed.");
+            logger.logInfo("FileManager closed.");
         } catch (Exception e) {
-            Logger.logError("Exception occurred while closing the FileManager : " + e);
+            logger.logError("Exception occurred while closing the FileManager : " + e);
             throw e;
         } finally {
             unlock();
+        }
+    }
+
+    @Override
+    public void fileTransferCompleted(FileTransferData fileTransferData) {
+        Path from = fileTransferData.from();
+        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
+            Path to = fileTransferData.to();
+            File toFile = to.toFile();
+            String fromFileName;
+            if (fileTransferData.notes().containsKey("renamed")) {
+                fromFileName = fileTransferData.notes().get("renamed");
+            } else {
+                fromFileName = from.getFileName().toString();
+            }
+            FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
+            allFilesDataMapping.put(to, fileData);
+            allFilesMaskedNameMapping.put(Path.of(fileStoragePath.toString(), fileData.getOriginalFilePath().toString()), to);
+        }
+        logger.logInfo("File [" + from + "] transfer complete.");
+    }
+
+    @Override
+    public void fileTransferFailed(FileTransferData fileTransferData) {
+        if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
+            fileManagerUpdateListener.newUpdate("Failed to add file [" + fileTransferData.from() + "] to the vault.");
+        } else {
+            fileManagerUpdateListener.newUpdate("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
         }
     }
 

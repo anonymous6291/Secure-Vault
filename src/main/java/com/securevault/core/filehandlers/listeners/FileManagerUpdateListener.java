@@ -1,6 +1,6 @@
-package com.securevault.filehandlers.listeners;
+package com.securevault.core.filehandlers.listeners;
 
-import com.securevault.filehandlers.FileTransferMonitor;
+import com.securevault.core.filehandlers.FileTransferMonitor;
 
 import java.util.List;
 

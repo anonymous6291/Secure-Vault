@@ -1,7 +1,7 @@
-package com.securevault;
+package com.securevault.core;
 
-import com.securevault.configurations.CipherManager;
-import com.securevault.configurations.ConfigurationDefaults;
+import com.securevault.core.configurations.CipherManager;
+import com.securevault.core.configurations.ConfigurationDefaults;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
@@ -19,17 +19,13 @@ import java.util.concurrent.Semaphore;
 
 public class Logger {
     private static final ConfigurationDefaults.Data configurations = ConfigurationDefaults.getDefault(Logger.class);
-    private static final Semaphore lock = new Semaphore(1, true);
-    private static BufferedOutputStream logFileWriter;
-    private static Path encrLogFile;
-    private static Path decrLogFile;
-    private static boolean initialized;
-    private static char[] encryptionKey;
+    private final Semaphore lock = new Semaphore(1, true);
+    private final Path encrLogFile;
+    private final Path decrLogFile;
+    private final char[] encryptionKey;
+    private BufferedOutputStream logFileWriter;
 
-    public static void init(Path encryptedLogFile, Path decryptedLogFile, char[] key) {
-        if (initialized) {
-            return;
-        }
+    public Logger(Path encryptedLogFile, Path decryptedLogFile, char[] key) {
         if (!lock()) {
             throw new RuntimeException("Initialization of Logger failed.");
         }
@@ -48,7 +44,6 @@ public class Logger {
             encrLogFile = encryptedLogFile;
             decrLogFile = decryptedLogFile;
             encryptionKey = key;
-            initialized = true;
         } catch (Exception e) {
             throw new RuntimeException("Initialization of Logger failed : " + e);
         } finally {
@@ -56,7 +51,7 @@ public class Logger {
         }
     }
 
-    private static boolean lock() {
+    private boolean lock() {
         try {
             lock.acquire();
             return true;
@@ -65,29 +60,27 @@ public class Logger {
         }
     }
 
-    private static void unlock() {
+    private void unlock() {
         lock.release();
     }
 
-    public static void logSevere(String message) {
+    public void logSevere(String message) {
         log(message, LogType.SEVERE);
     }
 
-    public static void logError(String message) {
+    public void logError(String message) {
         log(message, LogType.ERROR);
     }
 
-    public static void logWarn(String message) {
+    public void logWarn(String message) {
         log(message, LogType.WARN);
     }
 
-    public static void logInfo(String message) {
+    public void logInfo(String message) {
         log(message, LogType.INFO);
     }
 
-    public static synchronized void log(String message, LogType logType) {
-        if (!(initialized && lock())) {
-        }
+    public synchronized void log(String message, LogType logType) {
         IO.println("[" + logType + "] : " + message);
         try {
             logFileWriter.write((new Date() + " [" + logType + "] : " + message + "\n").getBytes());
@@ -99,10 +92,7 @@ public class Logger {
         }
     }
 
-    public static String getLogs(int lastLines) {
-        if (!(initialized && lock())) {
-            return null;
-        }
+    public String getLogs(int lastLines) {
         try {
             logFileWriter.close();
         } catch (Exception e) {
@@ -140,10 +130,7 @@ public class Logger {
         }
     }
 
-    public static void clearLogs() {
-        if (!(initialized && lock())) {
-            return;
-        }
+    public void clearLogs() {
         try {
             logFileWriter.close();
         } catch (Exception _) {
@@ -161,7 +148,7 @@ public class Logger {
         }
     }
 
-    private static void close0() throws Exception {
+    private void close0() throws Exception {
         logFileWriter.close();
         Cipher cipher = CipherManager.getCipher(encryptionKey, configurations.iv(), configurations.salt(), Cipher.ENCRYPT_MODE);
         CipherOutputStream cipherOutputStream = new CipherOutputStream(Files.newOutputStream(encrLogFile), cipher);
@@ -169,14 +156,10 @@ public class Logger {
         bufferedInputStream.transferTo(cipherOutputStream);
         cipherOutputStream.close();
         bufferedInputStream.close();
-        initialized = false;
         Files.delete(decrLogFile);
     }
 
-    public static void close() {
-        if (!initialized) {
-            return;
-        }
+    public void close() {
         if (!lock()) {
             throw new RuntimeException("Unable to gain lock while closing the Logger.");
         }
