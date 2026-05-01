@@ -34,7 +34,7 @@ public class FileTransferManager implements FileTransferMonitor {
     private final char[] key;
     private final FileTransferManagerListener fileTransferManagerListener;
     private final Logger logger;
-    private int nextFileHandlerId;
+    private final AtomicInteger nextFileHandlerId = new AtomicInteger(1);
     private volatile boolean shutdown;
     private volatile boolean abortAllFileTransfers;
 
@@ -149,7 +149,7 @@ public class FileTransferManager implements FileTransferMonitor {
         }
         fileTransferDataList.forEach(fileTransferData -> {
             Path to = fileTransferData.to();
-            FileTransferHandler fileTransferHandler = new FileTransferHandler(fileTransferData, key, nextFileHandlerId++);
+            FileTransferHandler fileTransferHandler = new FileTransferHandler(fileTransferData, key, nextFileHandlerId.getAndIncrement());
             try {
                 Files.createDirectories(to.getParent());
                 pendingFiles.offer(fileTransferHandler);

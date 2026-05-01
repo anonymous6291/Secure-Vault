@@ -215,10 +215,10 @@ public class FileManager implements FileTransferManagerListener {
                         fileCopyOption.resetType();
                     }
                     FileData fileData = allFilesDataMapping.get(allFilesMaskedNameMapping.get(originalFilePath));
-                    toFilePath = to.resolve(fileData.getMaskedName());
+                    toFilePath = Path.of(to.toString(), fileData.getMaskedName());
                 }
             } else {
-                toFilePath = to.resolve(getNewMaskedFileName());
+                toFilePath = Path.of(to.toString(), getNewMaskedFileName());
             }
         } else {
             FileData fileData = allFilesDataMapping.get(from);
@@ -226,7 +226,7 @@ public class FileManager implements FileTransferManagerListener {
                 return;
             }
             String originalFileName = fileData.getOriginalName();
-            toFilePath = to.resolve(originalFileName);
+            toFilePath = Path.of(to.toString(), originalFileName);
             if (Files.exists(toFilePath)) {
                 FileCopyOption.Type fileCopyType = fileCopyOption.getType();
                 if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
@@ -255,7 +255,7 @@ public class FileManager implements FileTransferManagerListener {
 
     private void recursivelyAddFiles(Path from, Path to, FileTransferMode mode, List<FileTransferData> fileTransferDataList, FileCopyOption fileCopyOption) {
         if (Files.isDirectory(from)) {
-            Path toSubDirectory = to.resolve(from.getFileName());
+            Path toSubDirectory = Path.of(to.toString(), from.getFileName().toString());
             try (Stream<Path> pathStream = Files.list(from)) {
                 pathStream.forEach(fromSubDirectory -> recursivelyAddFiles(fromSubDirectory, toSubDirectory, mode, fileTransferDataList, fileCopyOption));
             } catch (Exception e) {
@@ -276,7 +276,7 @@ public class FileManager implements FileTransferManagerListener {
     }
 
     public void getFiles(Path from, Path to) throws FileNotFoundException {
-        Path fromPath = fileStoragePath.resolve(from);
+        Path fromPath = Path.of(fileStoragePath.toString(), from.toString());
         if (!Files.exists(fromPath)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
@@ -293,7 +293,7 @@ public class FileManager implements FileTransferManagerListener {
         }
         FileData fileData = allFilesDataMapping.get(maskedPath);
         fileData.setOriginalName(newOriginalName);
-        allFilesMaskedNameMapping.put(path.resolveSibling(newOriginalName), maskedPath);
+        allFilesMaskedNameMapping.put(Path.of(path.getParent().toString(), newOriginalName), maskedPath);
         return true;
     }
 
@@ -331,7 +331,7 @@ public class FileManager implements FileTransferManagerListener {
         } else {
             FileData fileData = allFilesDataMapping.get(filePath);
             if (fileData != null) {
-                deleteFile0(fileStoragePath.resolve(fileData.getOriginalFilePath()));
+                deleteFile0(Path.of(fileStoragePath.toString(), fileData.getOriginalFilePath().toString()));
             }
         }
     }
