@@ -27,7 +27,7 @@ public class Vault {
     private final char[] vaultKey;
     private char[] password;
     private volatile boolean isVaultOpen;
-//
+
     public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener) throws Exception {
         assertVaultKeyRequirement(password);
         this.password = password.clone();
@@ -90,35 +90,35 @@ public class Vault {
         }
         return false;
     }
-//
-    public void putFiles(Path from) throws FileNotFoundException {
-        fileManager.addFiles(from);
+
+    public void putFiles(Path from, Path to) throws FileNotFoundException {
+        fileManager.addFiles(from, to);
     }
-//
+
     public void getFiles(Path from, Path to) throws FileNotFoundException {
         fileManager.getFiles(from, to);
     }
-//
+
     public boolean changeFileName(Path path, String newName) {
         return fileManager.changeFileName(path, newName);
     }
-//
+
     public void deleteFile(Path path) {
         fileManager.deleteFile(path);
     }
-//
+
     public void deleteDirectory(Path path) {
         fileManager.deleteDirectory(path);
     }
-//
+
     public List<String> getFilesList() {
         return fileManager.getFilesList();
     }
-//
+
     public void abortAllFileTransfers() {
         fileManager.abortAllFileTransfers();
     }
-//
+
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {
         assertVaultKeyRequirement(newKey);
         if (different(password, currentPassword)) {
@@ -130,32 +130,32 @@ public class Vault {
         password = cloned;
         logger.logWarn("Vault password changed.");
     }
-//
+
     public boolean isVaultOpen() {
         return isVaultOpen;
     }
-//
+
     public void lockdownVault(long duration) {
         configurationManager.enableLockdownMode(duration);
         closeVault();
     }
-//
+
     public void setSelfDestruct(int tries) {
         configurationManager.setSelfDestructMode(tries);
     }
-//
+
     public int getSelfDestructTries() {
         return configurationManager.getSelfDestructTries();
     }
-//
+
     public void disableSelfDestruct() {
         configurationManager.disableSelfDestructMode();
     }
-//
+
     public boolean isSelfDestructEnabled() {
         return configurationManager.isSelfDestructEnabled();
     }
-//
+
     public void selfDestruct(char[] password) {
         if (different(this.password, password)) {
             logger.logSevere("Vault destruction failed due to wrong vault key.");
@@ -165,7 +165,7 @@ public class Vault {
         configurationManager.selfDestruct();
         closeVault();
     }
-//
+
     public String getVersion() {
         return configurationManager.getVersion();
     }
@@ -173,7 +173,7 @@ public class Vault {
     public Logger getLogger() {
         return logger;
     }
-//
+
     public void closeVault() {
         if (!isVaultOpen()) {
             return;

@@ -266,12 +266,12 @@ public class FileManager implements FileTransferManagerListener {
         }
     }
 
-    public void addFiles(Path from) throws FileNotFoundException {
+    public void addFiles(Path from, Path to) throws FileNotFoundException {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
         List<FileTransferData> fileTransferDataList = new LinkedList<>();
-        recursivelyAddFiles(from, fileStoragePath, FileTransferMode.ENCRYPT, fileTransferDataList, new FileCopyOption());
+        recursivelyAddFiles(from, Path.of(fileStoragePath.toString(), to.toString()), FileTransferMode.ENCRYPT, fileTransferDataList, new FileCopyOption());
         fileTransferManager.transferFiles(fileTransferDataList);
     }
 
