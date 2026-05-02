@@ -5,18 +5,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securevault.core.filehandlers.FileTransferMonitor;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
 
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.file.Path;
+import java.security.spec.KeySpec;
+import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main implements FileManagerUpdateListener {
+    private static final int ITERATIONS = 100000;
+    private static final int KEY_LENGTH = 256;
+    private static final int TAG_SIZE = 128;
     private static FileTransferMonitor fileTransferMonitor;
     private static final ObjectMapper jsonHandler = new ObjectMapper();
     private static final AtomicInteger responseId = new AtomicInteger(0);
+    private static final AtomicBoolean shutdown = new AtomicBoolean(false);
     private static final ConcurrentHashMap<Integer, ResponseHandler> responseHandlers = new ConcurrentHashMap<>();
+    private static Cipher encryptCipher;
+    private static Cipher decryptCipher;
+    private static final Base64.Encoder encoder = Base64.getEncoder();
+    private static final Base64.Decoder decoder = Base64.getDecoder();
     private static Vault vault;
 
     static {
@@ -66,6 +83,44 @@ public class Main implements FileManagerUpdateListener {
         vault.closeVault();
     }
 
+    private static Cipher getCipher(char[] password, byte[] iv, byte[] salt, int mode) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATIONS, KEY_LENGTH);
+        SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
+        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
+        GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
+        cipher.init(mode, secretKeySpec, gcmParameterSpec);
+        return cipher;
+    }
+
+    private static void initHandles(char[] password, byte[] iv, byte[] salt) throws Exception {
+        encryptCipher = getCipher(password, iv, salt, Cipher.ENCRYPT_MODE);
+        decryptCipher = getCipher(password, iv, salt, Cipher.DECRYPT_MODE);
+        new Thread(() -> {
+            while (!shutdown.get()) {
+                try {
+                    String data = IO.readln();
+                    String decryptedData = decryptData(data);
+                    Command command = jsonHandler.readValue(decryptedData, Command.class);
+                    handleCommand(command);
+                } catch (Exception e) {
+                    sendOutput(new Output(OutputType.ERROR, 0, List.of(e.toString())));
+                }
+            }
+        }, "Input Reader").start();
+    }
+
+    private static String encryptData(String data) throws Exception {
+        byte[] encryptedData = encryptCipher.doFinal(data.getBytes());
+        return encoder.encodeToString(encryptedData);
+    }
+
+    private static String decryptData(String data) throws Exception {
+        byte[] decodedData = decoder.decode(data);
+        return new String(decryptCipher.doFinal(decodedData));
+    }
+
     private static boolean validNumberOfArguments(Command command, int numberOfArguments) {
         if (command.args() == null || command.args().size() != numberOfArguments) {
             sendInvalidCommandInfo(command);
@@ -74,7 +129,7 @@ public class Main implements FileManagerUpdateListener {
         return true;
     }
 
-    private static void handleCommand(Command command) throws Exception {
+    private static void handleCommand(Command command) {
         CommandType commandType = command.type();
         List<String> args = command.args();
         try {
@@ -101,6 +156,7 @@ public class Main implements FileManagerUpdateListener {
                     case CLOSE -> {
                         vault.closeVault();
                         sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault closed.")));
+                        shutdown.set(true);
                     }
                     case VERSION ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(vault.getVersion())));
@@ -178,6 +234,12 @@ public class Main implements FileManagerUpdateListener {
                             vault.deleteFile(path);
                         }
                     }
+                    case MAKE_DIRECTORY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            Path path = Path.of(args.getFirst());
+                            vault.makeDirectory(path);
+                        }
+                    }
                     case DELETE_DIRECTORY -> {
                         if (validNumberOfArguments(command, 1)) {
                             Path path = Path.of(args.getFirst());
@@ -215,12 +277,14 @@ public class Main implements FileManagerUpdateListener {
     }
 
     private static void sendInvalidCommandInfo(Command command) {
-        sendOutput(new Output(OutputType.INVALID, command.commandId(), List.of("Invalid command.")));
+        sendOutput(new Output(OutputType.INVALID_COMMAND, command.commandId(), List.of("Invalid command.")));
     }
 
-    private static void sendOutput(Output output) {
+    private static synchronized void sendOutput(Output output) {
         try {
             String responseJSON = jsonHandler.writeValueAsString(output);
+            String encrypted = encryptData(responseJSON);
+            IO.println(encrypted);
         } catch (Exception _) {
         }
     }
@@ -285,6 +349,7 @@ enum CommandType {
     GET_FILES_LIST,
     CHANGE_FILE_NAME,
     DELETE_FILE,
+    MAKE_DIRECTORY,
     DELETE_DIRECTORY,
     ABORT_ALL_FILE_TRANSFERS,
     RESPONSE,
@@ -296,16 +361,13 @@ enum CommandType {
 
 enum OutputType {
     ERROR,
-    INVALID,
+    INVALID_COMMAND,
     RESPONSE,
     UPDATE,
 }
 
 class ResponseHandler {
     private final CompletableFuture<String> response = new CompletableFuture<>();
-
-    ResponseHandler() {
-    }
 
     public void setResponse(String response) {
         this.response.complete(response);
@@ -315,7 +377,7 @@ class ResponseHandler {
         try {
             return this.response.get();
         } catch (Exception _) {
-            return null;
+            return "";
         }
     }
 }

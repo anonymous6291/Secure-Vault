@@ -320,6 +320,14 @@ public class FileManager implements FileTransferManagerListener {
         unlock();
     }
 
+    public void makeDirectory(Path path) {
+        try {
+            Path directory = Path.of(fileStoragePath.toString(), path.toString());
+            Files.createDirectories(directory);
+        } catch (Exception _) {
+        }
+    }
+
     private void deleteDirectory0(Path filePath) {
         if (Files.isDirectory(filePath)) {
             try (Stream<Path> files = Files.list(filePath)) {
@@ -340,12 +348,15 @@ public class FileManager implements FileTransferManagerListener {
         if (!lock()) {
             return;
         }
-        Path fileToBeDeleted = Path.of(fileStoragePath.toString(), path.toString());
-        if (Files.isDirectory(fileToBeDeleted)) {
-            logger.logWarn("Deleting directory [" + path + "] .");
-            deleteDirectory0(fileToBeDeleted);
+        try {
+            Path fileToBeDeleted = Path.of(fileStoragePath.toString(), path.toString());
+            if (Files.isDirectory(fileToBeDeleted)) {
+                logger.logWarn("Deleting directory [" + path + "] .");
+                deleteDirectory0(fileToBeDeleted);
+            }
+        } finally {
+            unlock();
         }
-        unlock();
     }
 
     public List<String> getFilesList() {

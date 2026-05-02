@@ -107,6 +107,10 @@ public class Vault {
         fileManager.deleteFile(path);
     }
 
+    public void makeDirectory(Path path) {
+        fileManager.makeDirectory(path);
+    }
+
     public void deleteDirectory(Path path) {
         fileManager.deleteDirectory(path);
     }
