@@ -64,11 +64,11 @@ public class Main implements FileManagerUpdateListener {
         Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault", false, password.toCharArray(), fileManagerUpdateListener);
         Logger logger = vault.getLogger();
         //vault.changeVaultPassword(password.toCharArray(), password1.toCharArray());
-        String option;/*
+        String option;
         while (!(option = IO.readln("Enter the option:")).equals("E")) {
             try {
                 switch (option) {
-                    case "pf" -> vault.putFiles(Path.of(IO.readln("Path:")));
+                    case "pf" -> vault.putFiles(Path.of(IO.readln("Path:")), Path.of(IO.readln("Path:")));
                     case "gf" -> vault.getFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
                     case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
                     case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
@@ -80,7 +80,7 @@ public class Main implements FileManagerUpdateListener {
             } catch (Exception e) {
                 IO.println(e);
             }
-        }*/
+        }
         vault.closeVault();
     }
 
@@ -109,7 +109,7 @@ public class Main implements FileManagerUpdateListener {
                     sendOutput(new Output(OutputType.ERROR, 0, List.of(e.toString())));
                 }
             }
-        }).start();
+        });
     }
 
     private static String encryptData(String data) throws Exception {

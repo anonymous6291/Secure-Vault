@@ -24,7 +24,7 @@ public class Vault {
     private static final String ENCRYPTED_LOG_FILE_NAME = "log.data";
     private static final String DECRYPTED_LOG_FILE_NAME = "log.data1";
     private static final int VAULT_KEY_MINIMUM_LENGTH = 5;
-    private static final long AUTO_SAVE_DELAY = 5 * 60 * 1000;
+    private static final long AUTO_SAVE_DELAY = 2 * 60 * 1000;
     private final AutoSaver autoSaver = new AutoSaver(AUTO_SAVE_DELAY);
     private final FileSystem vaultFileSystem;
     private final ConfigurationManager configurationManager;
@@ -249,6 +249,7 @@ public class Vault {
     }
 
     static class AutoSaver {
+        private final long RECHECK_DELAY = 200;
         private final LinkedList<Writable> autosave = new LinkedList<>();
         private final Semaphore lock = new Semaphore(1, true);
         private final long delay;
@@ -271,13 +272,16 @@ public class Vault {
                         }
                         unlock();
                     }
-                    try {
-                        Thread.sleep(delay);
-                    } catch (Exception _) {
+                    long value = System.currentTimeMillis() + delay;
+                    while (System.currentTimeMillis() < value && !shutdown.get()) {
+                        try {
+                            Thread.sleep(RECHECK_DELAY);
+                        } catch (Exception _) {
+                        }
                     }
                 }
                 isShutdown.set(true);
-            }).start();
+            });
         }
 
         private boolean lock() {
@@ -313,7 +317,7 @@ public class Vault {
             shutdown.set(true);
             while (!isShutdown.get()) {
                 try {
-                    Thread.sleep(500);
+                    Thread.sleep(RECHECK_DELAY);
                 } catch (InterruptedException _) {
                 }
             }

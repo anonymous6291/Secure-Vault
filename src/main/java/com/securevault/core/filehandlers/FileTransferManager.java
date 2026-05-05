@@ -23,7 +23,7 @@ public class FileTransferManager implements FileTransferMonitor {
     private static final int MAX_PARALLEL_FILE_TRANSFERS = 5;
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final Semaphore universalLock = new Semaphore(1, true);
-    private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
     private final Duration DELAY = Duration.ofMillis(300);
     private final ConcurrentLinkedQueue<String> failedFiles = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<FileTransferHandler> pendingFiles = new ConcurrentLinkedQueue<>();
@@ -106,7 +106,7 @@ public class FileTransferManager implements FileTransferMonitor {
                             fileTransferLock.release();
                         } else {
                             numberOfRunningFileTransfers.incrementAndGet();
-                            new Thread(() -> startSingleFileTransfer(fileTransferHandler)).start();
+                            Thread.startVirtualThread(() -> startSingleFileTransfer(fileTransferHandler));
                         }
                     }
                 } catch (Exception _) {
@@ -124,7 +124,7 @@ public class FileTransferManager implements FileTransferMonitor {
         if (isShutdown()) {
             return;
         }
-        new Thread(this::start0).start();
+        Thread.startVirtualThread(this::start0);
     }
 
     private boolean acquireUniversalLock() {
