@@ -138,6 +138,10 @@ public class PasswordAndAPIKeyManager implements Writable {
         return passwords.searchKey(prefix);
     }
 
+    public void clearAllPasswords() {
+        passwords.clearAll();
+    }
+
     public void putAPIKey(String name, String value) {
         apiKeys.putValue(name, value);
     }
@@ -152,6 +156,10 @@ public class PasswordAndAPIKeyManager implements Writable {
 
     public Set<String> searchAPIKey(String prefix) {
         return apiKeys.searchKey(prefix);
+    }
+
+    public void clearAllAPIKeys() {
+        apiKeys.clearAll();
     }
 
     @Override
@@ -224,10 +232,15 @@ public class PasswordAndAPIKeyManager implements Writable {
                 name = null;
                 value = null;
             }
+
+            void clear() {
+                clearValue();
+                children.clear();
+            }
         }
 
         private final TrieNode root = new TrieNode();
-        private final Semaphore lock = new Semaphore(1);
+        private final Semaphore lock = new Semaphore(1, true);
 
         private boolean lock() {
             try {
@@ -263,7 +276,8 @@ public class PasswordAndAPIKeyManager implements Writable {
             for (char c : name.toCharArray()) {
                 current = current.getChild(c);
                 if (current == null) {
-                    return null;
+                    unlock();
+                    return "";
                 }
             }
             unlock();
@@ -308,6 +322,7 @@ public class PasswordAndAPIKeyManager implements Writable {
             for (char c : prefix.toCharArray()) {
                 current = current.getChild(c);
                 if (current == null) {
+                    unlock();
                     return result;
                 }
             }
@@ -323,6 +338,10 @@ public class PasswordAndAPIKeyManager implements Writable {
             for (TrieNode trieNode : node.getChildren()) {
                 getAllPairsRecursively(trieNode, allKeys);
             }
+        }
+
+        void clearAll() {
+            root.clear();
         }
 
         Map<String, String> getAllPairs() {

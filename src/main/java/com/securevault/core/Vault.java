@@ -156,6 +156,10 @@ public class Vault {
         return passwordAndAPIKeyManager.searchPassword(prefix);
     }
 
+    public void clearAllStoredPasswords() {
+        passwordAndAPIKeyManager.clearAllPasswords();
+    }
+
     public void putAPIKey(String name, String value) {
         passwordAndAPIKeyManager.putAPIKey(name, value);
     }
@@ -170,6 +174,10 @@ public class Vault {
 
     public Set<String> searchAPIKey(String prefix) {
         return passwordAndAPIKeyManager.searchAPIKey(prefix);
+    }
+
+    public void clearAllStoredAPIKeys() {
+        passwordAndAPIKeyManager.clearAllAPIKeys();
     }
 
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {

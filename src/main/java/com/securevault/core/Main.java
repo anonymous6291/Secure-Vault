@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main implements FileManagerUpdateListener {
+    private static final String DEPENDENT_MODE_ARGUMENT = "-d";
     private static final int ITERATIONS = 100000;
     private static final int KEY_LENGTH = 256;
     private static final int TAG_SIZE = 128;
@@ -41,11 +42,40 @@ public class Main implements FileManagerUpdateListener {
         jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    static void main(String[] args) throws Exception {
-        IO.println(jsonHandler.writeValueAsString(CommandType.IS_SELF_DESTRUCT_ENABLED));
-        String password = "WORLD";
-        String password1 = "Hello";
-        FileManagerUpdateListener fileManagerUpdateListener = new FileManagerUpdateListener() {
+    static void main(String[] args) {
+        boolean dependentMode = false;
+        if (args != null) {
+            for (String s : args) {
+                if (s != null && s.equals(DEPENDENT_MODE_ARGUMENT)) {
+                    dependentMode = true;
+                    break;
+                }
+            }
+        }
+        if (dependentMode) {
+            dependentMode();
+        } else {
+            independentMode();
+        }
+    }
+
+    private static void independentMode() {
+        try {
+            String path = System.getProperty("user.dir") + "/Secure Vault";
+            boolean create = false;
+            String password = "WORLD";
+            //path = IO.readln("Enter the vault path: ");
+            //create = Boolean.parseBoolean(IO.readln("You want to create the vault? "));
+            //password = IO.readln("Enter the password: ");
+            independentModeVaultStart(path, create, password.toCharArray());
+        } catch (Exception e) {
+            IO.println("Exception occurred while opening the vault: " + e);
+        }
+    }
+
+    private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
+        //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray(), fileManagerUpdateListener);
+        Vault vault = new Vault(path, create, password, new FileManagerUpdateListener() {
             @Override
             public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor) {
             }
@@ -59,19 +89,25 @@ public class Main implements FileManagerUpdateListener {
             public void newUpdate(String update) {
                 IO.println("Update:\n" + update);
             }
-        };
-        //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray(), fileManagerUpdateListener);
-        Vault vault = new Vault(System.getProperty("user.dir") + "/Secure Vault", false, password.toCharArray(), fileManagerUpdateListener);
+        });
         Logger logger = vault.getLogger();
         //vault.changeVaultPassword(password.toCharArray(), password1.toCharArray());
         String option;
         while (!(option = IO.readln("Enter the option:")).equals("E")) {
             try {
                 switch (option) {
-                    case "pf" -> vault.putFiles(Path.of(IO.readln("Path:")), Path.of(IO.readln("Path:")));
+                    case "pf" -> vault.putFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
                     case "gf" -> vault.getFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
                     case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
                     case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
+                    case "pp" -> vault.putPassword(IO.readln("Name:"), IO.readln("Value"));
+                    case "gp" -> IO.println(vault.getPassword(IO.readln("Name:")));
+                    case "dp" -> vault.deletePassword(IO.readln("Name:"));
+                    case "sp" -> IO.println(vault.searchPassword(IO.readln("Prefix:")));
+                    case "pa" -> vault.putAPIKey(IO.readln("Name:"), IO.readln("Value"));
+                    case "ga" -> IO.println(vault.getAPIKey(IO.readln("Name:")));
+                    case "da" -> vault.deleteAPIKey(IO.readln("Name:"));
+                    case "sa" -> IO.println(vault.searchAPIKey(IO.readln("Prefix:")));
                     case "gl" -> IO.println(vault.getFilesList());
                     case "cl" -> logger.clearLogs();
                     case "l" -> IO.println(logger.getLogs(200));
@@ -82,6 +118,17 @@ public class Main implements FileManagerUpdateListener {
             }
         }
         vault.closeVault();
+    }
+
+    private static void dependentMode() {
+        char[] password = IO.readln("Password:").toCharArray();
+        byte[] iv = decoder.decode(IO.readln("IV:"));
+        byte[] salt = decoder.decode(IO.readln("Salt:"));
+        try {
+            initHandles(password, iv, salt);
+        } catch (Exception e) {
+            IO.println(e.toString());
+        }
     }
 
     private static Cipher getCipher(char[] password, byte[] iv, byte[] salt, int mode) throws Exception {
@@ -106,7 +153,7 @@ public class Main implements FileManagerUpdateListener {
                     Command command = jsonHandler.readValue(decryptedData, Command.class);
                     handleCommand(command);
                 } catch (Exception e) {
-                    sendOutput(new Output(OutputType.ERROR, 0, List.of(e.toString())));
+                    sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
                 }
             }
         });
@@ -292,6 +339,7 @@ public class Main implements FileManagerUpdateListener {
                             sendOutput(new Output(OutputType.ERROR, command.commandId(), result.stream().toList()));
                         }
                     }
+                    case DELETE_ALL_PASSWORDS -> vault.clearAllStoredPasswords();
                     case PUT_API_KEY -> {
                         if (validNumberOfArguments(command, 2)) {
                             vault.putAPIKey(args.getFirst(), args.get(1));
@@ -314,6 +362,7 @@ public class Main implements FileManagerUpdateListener {
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
                         }
                     }
+                    case DELETE_ALL_API_KEYS -> vault.clearAllStoredAPIKeys();
                 }
             }
         } catch (Exception e) {
@@ -353,7 +402,7 @@ public class Main implements FileManagerUpdateListener {
         list.add(query);
         list.addAll(options);
         ResponseHandler responseHandler = registerResponseHandler(id);
-        sendOutput(new Output(OutputType.RESPONSE, 0, list));
+        sendOutput(new Output(OutputType.RESPONSE, -1, list));
         String response = responseHandler.getResponse();
         int n = options.size();
         for (int i = 0; i < n; i++) {
@@ -400,10 +449,12 @@ enum CommandType {
     GET_PASSWORD,
     DELETE_PASSWORD,
     SEARCH_PASSWORD,
+    DELETE_ALL_PASSWORDS,
     PUT_API_KEY,
     GET_API_KEY,
     DELETE_API_KEY,
     SEARCH_API_KEY,
+    DELETE_ALL_API_KEYS,
     RESPONSE,
     GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
     GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
