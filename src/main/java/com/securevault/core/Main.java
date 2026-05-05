@@ -16,6 +16,7 @@ import java.security.spec.KeySpec;
 import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,15 +26,15 @@ public class Main implements FileManagerUpdateListener {
     private static final int ITERATIONS = 100000;
     private static final int KEY_LENGTH = 256;
     private static final int TAG_SIZE = 128;
-    private static FileTransferMonitor fileTransferMonitor;
     private static final ObjectMapper jsonHandler = new ObjectMapper();
     private static final AtomicInteger responseId = new AtomicInteger(0);
     private static final AtomicBoolean shutdown = new AtomicBoolean(false);
     private static final ConcurrentHashMap<Integer, ResponseHandler> responseHandlers = new ConcurrentHashMap<>();
-    private static Cipher encryptCipher;
-    private static Cipher decryptCipher;
     private static final Base64.Encoder encoder = Base64.getEncoder();
     private static final Base64.Decoder decoder = Base64.getDecoder();
+    private static Cipher encryptCipher;
+    private static Cipher decryptCipher;
+    private static FileTransferMonitor fileTransferMonitor;
     private static Vault vault;
 
     static {
@@ -97,7 +98,7 @@ public class Main implements FileManagerUpdateListener {
     private static void initHandles(char[] password, byte[] iv, byte[] salt) throws Exception {
         encryptCipher = getCipher(password, iv, salt, Cipher.ENCRYPT_MODE);
         decryptCipher = getCipher(password, iv, salt, Cipher.DECRYPT_MODE);
-        new Thread(() -> {
+        Thread.startVirtualThread(() -> {
             while (!shutdown.get()) {
                 try {
                     String data = IO.readln();
@@ -108,7 +109,7 @@ public class Main implements FileManagerUpdateListener {
                     sendOutput(new Output(OutputType.ERROR, 0, List.of(e.toString())));
                 }
             }
-        }, "Input Reader").start();
+        }).start();
     }
 
     private static String encryptData(String data) throws Exception {
@@ -269,6 +270,50 @@ public class Main implements FileManagerUpdateListener {
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), fileTransferMonitor.getFailedFileTransfersList()));
                     case GET_FILE_TRANSFER_PROGRESS ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Double.toString(fileTransferMonitor.getFileTransferProgress()))));
+                    case PUT_PASSWORD -> {
+                        if (validNumberOfArguments(command, 2)) {
+                            vault.putPassword(args.getFirst(), args.get(1));
+                        }
+                    }
+                    case GET_PASSWORD -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            String response = vault.getPassword(args.getFirst());
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
+                        }
+                    }
+                    case DELETE_PASSWORD -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            vault.deletePassword(args.getFirst());
+                        }
+                    }
+                    case SEARCH_PASSWORD -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            Set<String> result = vault.searchPassword(args.getFirst());
+                            sendOutput(new Output(OutputType.ERROR, command.commandId(), result.stream().toList()));
+                        }
+                    }
+                    case PUT_API_KEY -> {
+                        if (validNumberOfArguments(command, 2)) {
+                            vault.putAPIKey(args.getFirst(), args.get(1));
+                        }
+                    }
+                    case GET_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            String response = vault.getAPIKey(args.getFirst());
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
+                        }
+                    }
+                    case DELETE_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            vault.deleteAPIKey(args.getFirst());
+                        }
+                    }
+                    case SEARCH_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            Set<String> result = vault.searchAPIKey(args.getFirst());
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
@@ -332,7 +377,6 @@ record Output(OutputType type, int commandId, List<String> args) {
 }
 
 enum CommandType {
-    INVALID,
     OPEN,
     IS_OPEN,
     CLOSE,
@@ -352,6 +396,14 @@ enum CommandType {
     MAKE_DIRECTORY,
     DELETE_DIRECTORY,
     ABORT_ALL_FILE_TRANSFERS,
+    PUT_PASSWORD,
+    GET_PASSWORD,
+    DELETE_PASSWORD,
+    SEARCH_PASSWORD,
+    PUT_API_KEY,
+    GET_API_KEY,
+    DELETE_API_KEY,
+    SEARCH_API_KEY,
     RESPONSE,
     GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
     GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
@@ -375,7 +427,7 @@ class ResponseHandler {
 
     public String getResponse() {
         try {
-            return this.response.get();
+            return response.get();
         } catch (Exception _) {
             return "";
         }

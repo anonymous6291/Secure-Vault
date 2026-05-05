@@ -4,6 +4,7 @@ import com.securevault.core.configurations.ConfigurationManager;
 import com.securevault.core.filehandlers.FileManager;
 import com.securevault.core.filehandlers.VaultException;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.keyhandlers.PasswordAndAPIKeyManager;
 
 import javax.crypto.AEADBadTagException;
 import java.io.FileNotFoundException;
@@ -11,7 +12,11 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Vault {
     private static final String VAULT_FOLDER_NAME = "Secure Vault";
@@ -19,9 +24,12 @@ public class Vault {
     private static final String ENCRYPTED_LOG_FILE_NAME = "log.data";
     private static final String DECRYPTED_LOG_FILE_NAME = "log.data1";
     private static final int VAULT_KEY_MINIMUM_LENGTH = 5;
+    private static final long AUTO_SAVE_DELAY = 5 * 60 * 1000;
+    private final AutoSaver autoSaver = new AutoSaver(AUTO_SAVE_DELAY);
     private final FileSystem vaultFileSystem;
     private final ConfigurationManager configurationManager;
     private final FileManager fileManager;
+    private final PasswordAndAPIKeyManager passwordAndAPIKeyManager;
     private final String vaultPath;
     private final Logger logger;
     private final char[] vaultKey;
@@ -57,9 +65,18 @@ public class Vault {
         vaultKey = configurationManager.getVaultKey();
         logger = new Logger(getPath(ENCRYPTED_LOG_FILE_NAME), getPath(DECRYPTED_LOG_FILE_NAME), vaultKey);
         logger.logInfo("Vault opened.");
-        fileManager = new FileManager(vaultPath, vaultKey, fileManagerUpdateListener, logger);
+        fileManager = new FileManager(getPath(""), vaultKey, fileManagerUpdateListener, logger);
+        passwordAndAPIKeyManager = new PasswordAndAPIKeyManager(getPath(""), vaultKey, logger);
+        registerAutoSave(configurationManager);
+        registerAutoSave(fileManager);
+        registerAutoSave(passwordAndAPIKeyManager);
+        autoSaver.start();
         IO.println(new String(vaultKey));
         isVaultOpen = true;
+    }
+
+    private void registerAutoSave(Writable writable) {
+        autoSaver.register(writable);
     }
 
     private void assertVaultKeyRequirement(char[] key) {
@@ -123,6 +140,38 @@ public class Vault {
         fileManager.abortAllFileTransfers();
     }
 
+    public void putPassword(String name, String value) {
+        passwordAndAPIKeyManager.putPassword(name, value);
+    }
+
+    public String getPassword(String name) {
+        return passwordAndAPIKeyManager.getPassword(name);
+    }
+
+    public void deletePassword(String name) {
+        passwordAndAPIKeyManager.deletePassword(name);
+    }
+
+    public Set<String> searchPassword(String prefix) {
+        return passwordAndAPIKeyManager.searchPassword(prefix);
+    }
+
+    public void putAPIKey(String name, String value) {
+        passwordAndAPIKeyManager.putAPIKey(name, value);
+    }
+
+    public String getAPIKey(String name) {
+        return passwordAndAPIKeyManager.getAPIKey(name);
+    }
+
+    public void deleteAPIKey(String name) {
+        passwordAndAPIKeyManager.deleteAPIKey(name);
+    }
+
+    public Set<String> searchAPIKey(String prefix) {
+        return passwordAndAPIKeyManager.searchAPIKey(prefix);
+    }
+
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {
         assertVaultKeyRequirement(newKey);
         if (different(password, currentPassword)) {
@@ -183,17 +232,91 @@ public class Vault {
             return;
         }
         logger.logInfo("Closing vault.");
+        autoSaver.shutdown();
         try {
             isVaultOpen = false;
             int n = vaultKey.length;
-            configurationManager.writeConfiguration();
+            configurationManager.writeData();
             fileManager.close();
+            passwordAndAPIKeyManager.close();
             logger.close();
             for (int i = 0; i < n; i++) {
                 vaultKey[i] = 0;
             }
         } catch (Exception e) {
             throw new VaultException("Exception occurred while performing shutdown tasks of Vault : " + e);
+        }
+    }
+
+    static class AutoSaver {
+        private final LinkedList<Writable> autosave = new LinkedList<>();
+        private final Semaphore lock = new Semaphore(1, true);
+        private final long delay;
+        private final AtomicBoolean shutdown = new AtomicBoolean(false);
+        private final AtomicBoolean isShutdown = new AtomicBoolean(false);
+
+        AutoSaver(long delay) {
+            this.delay = delay;
+        }
+
+        void start() {
+            Thread.startVirtualThread(() -> {
+                while (!shutdown.get()) {
+                    if (lock()) {
+                        for (Writable writable : autosave) {
+                            try {
+                                writable.writeData();
+                            } catch (Exception _) {
+                            }
+                        }
+                        unlock();
+                    }
+                    try {
+                        Thread.sleep(delay);
+                    } catch (Exception _) {
+                    }
+                }
+                isShutdown.set(true);
+            }).start();
+        }
+
+        private boolean lock() {
+            try {
+                lock.acquire();
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        private void unlock() {
+            lock.release();
+        }
+
+        void register(Writable writable) {
+            if (!lock()) {
+                return;
+            }
+            autosave.add(writable);
+            unlock();
+        }
+
+        void deregister(Writable writable) {
+            if (!lock()) {
+                return;
+            }
+            autosave.remove(writable);
+            unlock();
+        }
+
+        void shutdown() {
+            shutdown.set(true);
+            while (!isShutdown.get()) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException _) {
+                }
+            }
         }
     }
 }

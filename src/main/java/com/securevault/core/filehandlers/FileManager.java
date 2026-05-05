@@ -1,6 +1,7 @@
 package com.securevault.core.filehandlers;
 
 import com.securevault.core.Logger;
+import com.securevault.core.Writable;
 import com.securevault.core.configurations.CipherManager;
 import com.securevault.core.configurations.ConfigurationDefaults;
 import com.securevault.core.configurations.RandomValueGenerator;
@@ -22,11 +23,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
-public class FileManager implements FileTransferManagerListener {
+public class FileManager implements FileTransferManagerListener, Writable {
     private static final String FILE_STORAGE_FOLDER_NAME = "files";
     private static final String FILE_DATA_NAME = "files.data";
     private static final String FILE_DATA_END_MARKER = "#############################END#############################";
-    private final Semaphore lock = new Semaphore(1);
+    private final Semaphore lock = new Semaphore(1, true);
     private final Path fileDataPath;
     private final Path fileStoragePath;
     private final char[] vaultKey;
@@ -375,11 +376,9 @@ public class FileManager implements FileTransferManagerListener {
         fileTransferManager.abortAllFileTransfers();
     }
 
-    public void close() throws Exception {
-        if (!lock()) {
-            return;
-        }
-        fileTransferManager.shutdown();
+    @Override
+    public void writeData() throws Exception {
+        lock();
         try {
             BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(Files.newOutputStream(fileDataPath));
             bufferedOutputStream.write(iv);
@@ -392,13 +391,18 @@ public class FileManager implements FileTransferManagerListener {
             }
             cipherOutputStream.write(FILE_DATA_END_MARKER.getBytes());
             cipherOutputStream.close();
-            logger.logInfo("FileManager closed.");
         } catch (Exception e) {
-            logger.logError("Exception occurred while closing the FileManager : " + e);
+            logger.logError("Exception occurred while writing data of FileManager : " + e);
             throw e;
         } finally {
             unlock();
         }
+    }
+
+    public void close() throws Exception {
+        fileTransferManager.shutdown();
+        writeData();
+        logger.logInfo("FileManager closed.");
     }
 
     @Override

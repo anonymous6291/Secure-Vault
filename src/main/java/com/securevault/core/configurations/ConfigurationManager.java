@@ -2,6 +2,7 @@ package com.securevault.core.configurations;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.securevault.core.Writable;
 
 import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
@@ -10,8 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Date;
+import java.util.concurrent.Semaphore;
 
-public class ConfigurationManager {
+public class ConfigurationManager implements Writable {
     private static final String VERSION = "1.0.0";
     private static final int KEY_LENGTH = 50;
     private static final int MAX_TRIES = 5;
@@ -20,6 +22,7 @@ public class ConfigurationManager {
     private static final ObjectMapper json = new ObjectMapper();
     private static final Base64.Encoder base64Encoder = Base64.getEncoder();
     private static final Base64.Decoder base64Decoder = Base64.getDecoder();
+    private final Semaphore lock = new Semaphore(1, true);
 
     static {
         json.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -83,10 +86,23 @@ public class ConfigurationManager {
                     }
                 }
                 configuration.setTries(tries);
-                writeConfiguration();
+                writeData();
                 throw e;
             }
         }
+    }
+
+    private boolean lock() {
+        try {
+            lock.acquire();
+            return true;
+        } catch (InterruptedException e) {
+            return false;
+        }
+    }
+
+    private void unlock() {
+        lock.release();
     }
 
     public String getVersion() {
@@ -100,22 +116,34 @@ public class ConfigurationManager {
         Cipher cipher = CipherManager.getCipher(newKey, iv, salt, Cipher.ENCRYPT_MODE);
         byte[] encrypted = cipher.doFinal(old);
         configuration.setKey(base64Encoder.encodeToString(encrypted));
-        writeConfiguration();
+        writeData();
     }
 
     public void enableLockdownMode(long duration) {
+        if (!lock()) {
+            return;
+        }
         configuration.setLockdown(true);
         configuration.setLockdown_end_time(new Date(duration + System.currentTimeMillis()));
+        unlock();
     }
 
     public void selfDestruct() {
+        if (!lock()) {
+            return;
+        }
         configuration.setIs_destructed(true);
         configuration.setKey(base64Encoder.encodeToString(RandomValueGenerator.generateSecureBytes(configuration.getKey().length())));
+        unlock();
     }
 
     public void disableSelfDestructMode() {
+        if (!lock()) {
+            return;
+        }
         configuration.setSelf_destruct(false);
         configuration.setSelf_destruct_limit(0);
+        unlock();
     }
 
     public boolean isSelfDestructEnabled() {
@@ -123,12 +151,16 @@ public class ConfigurationManager {
     }
 
     public void setSelfDestructMode(int tries) {
+        if (!lock()) {
+            return;
+        }
         if (tries <= 0) {
             disableSelfDestructMode();
         } else {
             configuration.setSelf_destruct(true);
             configuration.setSelf_destruct_limit(tries);
         }
+        unlock();
     }
 
     public int getSelfDestructTries() {
@@ -139,13 +171,19 @@ public class ConfigurationManager {
         return vaultKey.clone();
     }
 
-    public void writeConfiguration() throws Exception {
-        ConfigurationDefaults.Data defaultConfigurationManagerData = ConfigurationDefaults.getDefault(ConfigurationManager.class);
-        String configData = json.writeValueAsString(configuration);
-        byte[] data = configData.getBytes(StandardCharsets.UTF_16);
-        Cipher cipher = CipherManager.getCipher(defaultConfigurationManagerData.key(), defaultConfigurationManagerData.iv(), defaultConfigurationManagerData.salt(), Cipher.ENCRYPT_MODE);
-        data = cipher.doFinal(data);
-        Files.write(configurationPath, data);
+    @Override
+    public void writeData() throws Exception {
+        lock();
+        try {
+            ConfigurationDefaults.Data defaultConfigurationManagerData = ConfigurationDefaults.getDefault(ConfigurationManager.class);
+            String configData = json.writeValueAsString(configuration);
+            byte[] data = configData.getBytes(StandardCharsets.UTF_16);
+            Cipher cipher = CipherManager.getCipher(defaultConfigurationManagerData.key(), defaultConfigurationManagerData.iv(), defaultConfigurationManagerData.salt(), Cipher.ENCRYPT_MODE);
+            data = cipher.doFinal(data);
+            Files.write(configurationPath, data);
+        } finally {
+            unlock();
+        }
     }
 
     static class Configuration {
