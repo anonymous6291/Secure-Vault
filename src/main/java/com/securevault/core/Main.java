@@ -11,19 +11,53 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.security.spec.KeySpec;
-import java.util.Base64;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Main implements FileManagerUpdateListener {
+    enum UsageCommand {
+        VERSION,
+        CHANGE_PASSWORD,
+        SELF_DESTRUCT,
+        LOCKDOWN,
+        SET_SELF_DESTRUCT,
+        GET_SELF_DESTRUCT_TRIES,
+        DISABLE_SELF_DESTRUCT,
+        IS_SELF_DESTRUCT_ENABLED,
+        PUT_FILE,
+        GET_FILE,
+        GET_FILES_LIST,
+        CHANGE_FILE_NAME,
+        DELETE_FILE,
+        MAKE_DIRECTORY,
+        DELETE_DIRECTORY,
+        ABORT_ALL_FILE_TRANSFERS,
+        PUT_PASSWORD,
+        GET_PASSWORD,
+        DELETE_PASSWORD,
+        SEARCH_PASSWORD,
+        DELETE_ALL_PASSWORDS,
+        PUT_API_KEY,
+        GET_API_KEY,
+        DELETE_API_KEY,
+        SEARCH_API_KEY,
+        DELETE_ALL_API_KEYS,
+        GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
+        GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
+        GET_FAILED_FILE_TRANSFERS_LIST,
+        GET_FILE_TRANSFER_PROGRESS,
+        GET_LOGS,
+    }
+
+    private static final Map<String, UsageCommand> COMMANDS = new HashMap<>();
     private static final String DEPENDENT_MODE_ARGUMENT = "-d";
+    private static final String EXIT_COMMAND = "EXIT";
     private static final int ITERATIONS = 100000;
     private static final int KEY_LENGTH = 256;
     private static final int TAG_SIZE = 128;
@@ -38,8 +72,40 @@ public class Main implements FileManagerUpdateListener {
     private static FileTransferMonitor fileTransferMonitor;
     private static Vault vault;
 
+
     static {
         jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        COMMANDS.put("v", UsageCommand.VERSION);
+        COMMANDS.put("cp", UsageCommand.CHANGE_PASSWORD);
+        COMMANDS.put("sd", UsageCommand.SELF_DESTRUCT);
+        COMMANDS.put("ld", UsageCommand.LOCKDOWN);
+        COMMANDS.put("ssd", UsageCommand.SET_SELF_DESTRUCT);
+        COMMANDS.put("gsdt", UsageCommand.GET_SELF_DESTRUCT_TRIES);
+        COMMANDS.put("dsd", UsageCommand.DISABLE_SELF_DESTRUCT);
+        COMMANDS.put("isde", UsageCommand.IS_SELF_DESTRUCT_ENABLED);
+        COMMANDS.put("pf", UsageCommand.PUT_FILE);
+        COMMANDS.put("gf", UsageCommand.GET_FILE);
+        COMMANDS.put("gfl", UsageCommand.GET_FILES_LIST);
+        COMMANDS.put("cfn", UsageCommand.CHANGE_FILE_NAME);
+        COMMANDS.put("df", UsageCommand.DELETE_FILE);
+        COMMANDS.put("md", UsageCommand.MAKE_DIRECTORY);
+        COMMANDS.put("dd", UsageCommand.DELETE_DIRECTORY);
+        COMMANDS.put("aaft", UsageCommand.ABORT_ALL_FILE_TRANSFERS);
+        COMMANDS.put("pp", UsageCommand.PUT_PASSWORD);
+        COMMANDS.put("gp", UsageCommand.GET_PASSWORD);
+        COMMANDS.put("dp", UsageCommand.DELETE_PASSWORD);
+        COMMANDS.put("sp", UsageCommand.SEARCH_PASSWORD);
+        COMMANDS.put("dap", UsageCommand.DELETE_ALL_PASSWORDS);
+        COMMANDS.put("pak", UsageCommand.PUT_API_KEY);
+        COMMANDS.put("gak", UsageCommand.GET_API_KEY);
+        COMMANDS.put("dak", UsageCommand.DELETE_API_KEY);
+        COMMANDS.put("sak", UsageCommand.SEARCH_API_KEY);
+        COMMANDS.put("daak", UsageCommand.DELETE_ALL_API_KEYS);
+        COMMANDS.put("gnopft", UsageCommand.GET_NUMBER_OF_PENDING_FILE_TRANSFERS);
+        COMMANDS.put("gnofft", UsageCommand.GET_NUMBER_OF_FAILED_FILE_TRANSFERS);
+        COMMANDS.put("gfftl", UsageCommand.GET_FAILED_FILE_TRANSFERS_LIST);
+        COMMANDS.put("gftp", UsageCommand.GET_FILE_TRANSFER_PROGRESS);
+        COMMANDS.put("gl", UsageCommand.GET_LOGS);
     }
 
     static void main(String[] args) {
@@ -73,8 +139,18 @@ public class Main implements FileManagerUpdateListener {
         }
     }
 
+    private static void printUsageList() {
+        for (String command : COMMANDS.keySet()) {
+            IO.println(command + " => " + COMMANDS.get(command));
+        }
+    }
+
+    private static boolean confirmAction(UsageCommand usageCommand) {
+        String reply = IO.readln("Do you really want to execute [" + usageCommand + "] ? [Y|N] ?");
+        return reply.matches("[yY]");
+    }
+
     private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
-        //Vault vault = new Vault(System.getProperty("user.dir"), true, password.toCharArray(), fileManagerUpdateListener);
         Vault vault = new Vault(path, create, password, new FileManagerUpdateListener() {
             @Override
             public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor) {
@@ -82,7 +158,13 @@ public class Main implements FileManagerUpdateListener {
 
             @Override
             public int askForResponse(String query, List<String> options) {
-                return Integer.parseInt(IO.readln(query + "\nOptions:\n" + options));
+                String printQuery = query + "\nOptions (enter 0th based index of the option):\n" + options;
+                while (true) {
+                    try {
+                        return Integer.parseInt(IO.readln(printQuery));
+                    } catch (Exception _) {
+                    }
+                }
             }
 
             @Override
@@ -91,30 +173,91 @@ public class Main implements FileManagerUpdateListener {
             }
         });
         Logger logger = vault.getLogger();
-        //vault.changeVaultPassword(password.toCharArray(), password1.toCharArray());
         String option;
-        while (!(option = IO.readln("Enter the option:")).equals("E")) {
+        while (!(option = IO.readln("Enter the option:")).equals(EXIT_COMMAND)) {
             try {
-                switch (option) {
-                    case "pf" -> vault.putFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
-                    case "gf" -> vault.getFiles(Path.of(IO.readln("From:")), Path.of(IO.readln("To:")));
-                    case "df" -> vault.deleteFile(Path.of(IO.readln("Path:")));
-                    case "dd" -> vault.deleteDirectory(Path.of(IO.readln("Path:")));
-                    case "pp" -> vault.putPassword(IO.readln("Name:"), IO.readln("Value"));
-                    case "gp" -> IO.println(vault.getPassword(IO.readln("Name:")));
-                    case "dp" -> vault.deletePassword(IO.readln("Name:"));
-                    case "sp" -> IO.println(vault.searchPassword(IO.readln("Prefix:")));
-                    case "pa" -> vault.putAPIKey(IO.readln("Name:"), IO.readln("Value"));
-                    case "ga" -> IO.println(vault.getAPIKey(IO.readln("Name:")));
-                    case "da" -> vault.deleteAPIKey(IO.readln("Name:"));
-                    case "sa" -> IO.println(vault.searchAPIKey(IO.readln("Prefix:")));
-                    case "gl" -> IO.println(vault.getFilesList());
-                    case "cl" -> logger.clearLogs();
-                    case "l" -> IO.println(logger.getLogs(200));
-                    case "ab" -> vault.abortAllFileTransfers();
+                UsageCommand usageCommand = COMMANDS.get(option);
+                switch (usageCommand) {
+                    case VERSION -> IO.println(vault.getVersion());
+                    case CHANGE_PASSWORD -> {
+                        char[] currentPassword = IO.readln("Enter the current password: ").toCharArray();
+                        char[] newPassword = IO.readln("Enter the new password: ").toCharArray();
+                        char[] recheckPassword = IO.readln("Renter the new password: ").toCharArray();
+                        boolean flag = newPassword.length == recheckPassword.length;
+                        if (flag) {
+                            for (int i = newPassword.length - 1; flag && i >= 0; i--) {
+                                flag = newPassword[i] == recheckPassword[i];
+                            }
+                        }
+                        if (flag && confirmAction(usageCommand)) {
+                            vault.changeVaultPassword(currentPassword, newPassword);
+                        }
+                    }
+                    case SELF_DESTRUCT -> {
+                        char[] currentPassword = IO.readln("Enter the current password: ").toCharArray();
+                        if (confirmAction(usageCommand)) {
+                            vault.selfDestruct(currentPassword);
+                        }
+                    }
+                    case LOCKDOWN -> {
+                    }
+                    case SET_SELF_DESTRUCT -> {
+                    }
+                    case GET_SELF_DESTRUCT_TRIES -> {
+                    }
+                    case DISABLE_SELF_DESTRUCT -> {
+                    }
+                    case IS_SELF_DESTRUCT_ENABLED -> {
+                    }
+                    case PUT_FILE -> {
+                    }
+                    case GET_FILE -> {
+                    }
+                    case GET_FILES_LIST -> {
+                    }
+                    case CHANGE_FILE_NAME -> {
+                    }
+                    case DELETE_FILE -> {
+                    }
+                    case MAKE_DIRECTORY -> {
+                    }
+                    case DELETE_DIRECTORY -> {
+                    }
+                    case ABORT_ALL_FILE_TRANSFERS -> {
+                    }
+                    case PUT_PASSWORD -> {
+                    }
+                    case GET_PASSWORD -> {
+                    }
+                    case DELETE_PASSWORD -> {
+                    }
+                    case SEARCH_PASSWORD -> {
+                    }
+                    case DELETE_ALL_PASSWORDS -> {
+                    }
+                    case PUT_API_KEY -> {
+                    }
+                    case GET_API_KEY -> {
+                    }
+                    case DELETE_API_KEY -> {
+                    }
+                    case SEARCH_API_KEY -> {
+                    }
+                    case DELETE_ALL_API_KEYS -> {
+                    }
+                    case GET_NUMBER_OF_PENDING_FILE_TRANSFERS -> {
+                    }
+                    case GET_NUMBER_OF_FAILED_FILE_TRANSFERS -> {
+                    }
+                    case GET_FAILED_FILE_TRANSFERS_LIST -> {
+                    }
+                    case GET_FILE_TRANSFER_PROGRESS -> {
+                    }
+                    case GET_LOGS -> {
+                    }
                 }
             } catch (Exception e) {
-                IO.println(e);
+                IO.println("Exception occurred : " + e);
             }
         }
         vault.closeVault();
@@ -363,6 +506,16 @@ public class Main implements FileManagerUpdateListener {
                         }
                     }
                     case DELETE_ALL_API_KEYS -> vault.clearAllStoredAPIKeys();
+                    case GET_LOG -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            try {
+                                int count = Integer.parseInt(args.getFirst());
+                                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(vault.getLogger().getLogs(count))));
+                            } catch (Exception e) {
+                                sendInvalidCommandInfo(command);
+                            }
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
@@ -460,6 +613,7 @@ enum CommandType {
     GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
     GET_FAILED_FILE_TRANSFERS_LIST,
     GET_FILE_TRANSFER_PROGRESS,
+    GET_LOG,
 }
 
 enum OutputType {
