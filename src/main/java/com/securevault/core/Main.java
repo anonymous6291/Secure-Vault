@@ -200,9 +200,9 @@ public class Main implements FileManagerUpdateListener {
                     }
                     case LOCKDOWN -> {
                         try {
-                            long duration = Long.parseLong(IO.readln("Enter the lockdown duration in millis: "));
+                            long seconds = Long.parseLong(IO.readln("Enter the lockdown duration in seconds: "));
                             if (confirmAction(usageCommand)) {
-                                vault.lockdownVault(duration);
+                                vault.lockdownVault(seconds);
                             }
                         } catch (NumberFormatException _) {
                             IO.println("Invalid duration.");

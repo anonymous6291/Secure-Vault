@@ -196,8 +196,8 @@ public class Vault {
         return isVaultOpen;
     }
 
-    public void lockdownVault(long duration) {
-        configurationManager.enableLockdownMode(duration);
+    public void lockdownVault(long seconds) {
+        configurationManager.enableLockdownMode(seconds);
         closeVault();
     }
 
