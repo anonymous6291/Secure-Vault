@@ -11,7 +11,6 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.security.spec.KeySpec;
 import java.util.*;
@@ -200,6 +199,14 @@ public class Main implements FileManagerUpdateListener {
                         }
                     }
                     case LOCKDOWN -> {
+                        try {
+                            long duration = Long.parseLong(IO.readln("Enter the lockdown duration in millis: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.lockdownVault(duration);
+                            }
+                        } catch (NumberFormatException _) {
+                            IO.println("Invalid duration.");
+                        }
                     }
                     case SET_SELF_DESTRUCT -> {
                     }
