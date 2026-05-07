@@ -297,6 +297,9 @@ public class PasswordAndAPIKeyManager implements Writable {
         }
 
         void deleteKey(String name) {
+            if (name.isEmpty()) {
+                return;
+            }
             if (!lock()) {
                 return;
             }

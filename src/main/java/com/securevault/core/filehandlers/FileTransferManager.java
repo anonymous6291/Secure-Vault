@@ -215,7 +215,7 @@ public class FileTransferManager implements FileTransferMonitor {
     public double getFileTransferProgress() {
         long data = dataToBeTransferred.get();
         if (data == 0) {
-            return -1;
+            return 100;
         }
         return (dataTransferred.get() * 100.0) / data;
     }

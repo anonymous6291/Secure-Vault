@@ -11,6 +11,7 @@ import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.Console;
 import java.nio.file.Path;
 import java.security.spec.KeySpec;
 import java.util.*;
@@ -54,7 +55,7 @@ public class Main implements FileManagerUpdateListener {
         GET_LOGS,
     }
 
-    private static final Map<String, UsageCommand> COMMANDS = new HashMap<>();
+    private static final Map<String, UsageCommand> COMMANDS = new LinkedHashMap<>();
     private static final String DEPENDENT_MODE_ARGUMENT = "-d";
     private static final String EXIT_COMMAND = "EXIT";
     private static final int ITERATIONS = 100000;
@@ -149,10 +150,19 @@ public class Main implements FileManagerUpdateListener {
         return reply.matches("[yY]");
     }
 
+    private static String readConfidentialString() {
+        Console console = System.console();
+        if (console == null) {
+            return IO.readln();
+        }
+        return new String(console.readPassword());
+    }
+
     private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
         Vault vault = new Vault(path, create, password, new FileManagerUpdateListener() {
             @Override
-            public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor) {
+            public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor1) {
+                fileTransferMonitor = fileTransferMonitor1;
             }
 
             @Override
@@ -171,101 +181,185 @@ public class Main implements FileManagerUpdateListener {
                 IO.println("Update:\n" + update);
             }
         });
+        printUsageList();
         Logger logger = vault.getLogger();
         String option;
-        while (!(option = IO.readln("Enter the option:")).equals(EXIT_COMMAND)) {
+        while (!(option = IO.readln("Enter the option or [" + EXIT_COMMAND + "] to exit: ")).equals(EXIT_COMMAND)) {
+            IO.println();
             try {
                 UsageCommand usageCommand = COMMANDS.get(option);
-                switch (usageCommand) {
-                    case VERSION -> IO.println(vault.getVersion());
-                    case CHANGE_PASSWORD -> {
-                        char[] currentPassword = IO.readln("Enter the current password: ").toCharArray();
-                        char[] newPassword = IO.readln("Enter the new password: ").toCharArray();
-                        char[] recheckPassword = IO.readln("Renter the new password: ").toCharArray();
-                        boolean flag = newPassword.length == recheckPassword.length;
-                        if (flag) {
-                            for (int i = newPassword.length - 1; flag && i >= 0; i--) {
-                                flag = newPassword[i] == recheckPassword[i];
+                if (usageCommand == null) {
+                    printUsageList();
+                } else {
+                    switch (usageCommand) {
+                        case VERSION -> IO.println(vault.getVersion());
+                        case CHANGE_PASSWORD -> {
+                            IO.println("Enter the current password: ");
+                            char[] currentPassword = readConfidentialString().toCharArray();
+                            IO.println("Enter the new password: ");
+                            char[] newPassword = readConfidentialString().toCharArray();
+                            IO.println("Renter the new password: ");
+                            char[] recheckPassword = readConfidentialString().toCharArray();
+                            boolean flag = newPassword.length == recheckPassword.length;
+                            if (flag) {
+                                for (int i = newPassword.length - 1; flag && i >= 0; i--) {
+                                    flag = newPassword[i] == recheckPassword[i];
+                                }
+                            }
+                            if (!flag) {
+                                IO.println("New password mismatch. Try again.");
+                            } else if (confirmAction(usageCommand)) {
+                                vault.changeVaultPassword(currentPassword, newPassword);
                             }
                         }
-                        if (flag && confirmAction(usageCommand)) {
-                            vault.changeVaultPassword(currentPassword, newPassword);
-                        }
-                    }
-                    case SELF_DESTRUCT -> {
-                        char[] currentPassword = IO.readln("Enter the current password: ").toCharArray();
-                        if (confirmAction(usageCommand)) {
-                            vault.selfDestruct(currentPassword);
-                        }
-                    }
-                    case LOCKDOWN -> {
-                        try {
-                            long seconds = Long.parseLong(IO.readln("Enter the lockdown duration in seconds: "));
+                        case SELF_DESTRUCT -> {
+                            IO.println("Enter the current password: ");
+                            char[] currentPassword = readConfidentialString().toCharArray();
                             if (confirmAction(usageCommand)) {
-                                vault.lockdownVault(seconds);
+                                vault.selfDestruct(currentPassword);
                             }
-                        } catch (NumberFormatException _) {
-                            IO.println("Invalid duration.");
                         }
-                    }
-                    case SET_SELF_DESTRUCT -> {
-                    }
-                    case GET_SELF_DESTRUCT_TRIES -> {
-                    }
-                    case DISABLE_SELF_DESTRUCT -> {
-                    }
-                    case IS_SELF_DESTRUCT_ENABLED -> {
-                    }
-                    case PUT_FILE -> {
-                    }
-                    case GET_FILE -> {
-                    }
-                    case GET_FILES_LIST -> {
-                    }
-                    case CHANGE_FILE_NAME -> {
-                    }
-                    case DELETE_FILE -> {
-                    }
-                    case MAKE_DIRECTORY -> {
-                    }
-                    case DELETE_DIRECTORY -> {
-                    }
-                    case ABORT_ALL_FILE_TRANSFERS -> {
-                    }
-                    case PUT_PASSWORD -> {
-                    }
-                    case GET_PASSWORD -> {
-                    }
-                    case DELETE_PASSWORD -> {
-                    }
-                    case SEARCH_PASSWORD -> {
-                    }
-                    case DELETE_ALL_PASSWORDS -> {
-                    }
-                    case PUT_API_KEY -> {
-                    }
-                    case GET_API_KEY -> {
-                    }
-                    case DELETE_API_KEY -> {
-                    }
-                    case SEARCH_API_KEY -> {
-                    }
-                    case DELETE_ALL_API_KEYS -> {
-                    }
-                    case GET_NUMBER_OF_PENDING_FILE_TRANSFERS -> {
-                    }
-                    case GET_NUMBER_OF_FAILED_FILE_TRANSFERS -> {
-                    }
-                    case GET_FAILED_FILE_TRANSFERS_LIST -> {
-                    }
-                    case GET_FILE_TRANSFER_PROGRESS -> {
-                    }
-                    case GET_LOGS -> {
+                        case LOCKDOWN -> {
+                            try {
+                                long seconds = Long.parseLong(IO.readln("Enter the lockdown duration in seconds: "));
+                                if (confirmAction(usageCommand)) {
+                                    vault.lockdownVault(seconds);
+                                }
+                            } catch (NumberFormatException _) {
+                                IO.println("Invalid duration.");
+                            }
+                        }
+                        case SET_SELF_DESTRUCT -> {
+                            try {
+                                int tries = Integer.parseInt(IO.readln("Enter the number of tries: "));
+                                if (confirmAction(usageCommand)) {
+                                    vault.setSelfDestruct(tries);
+                                }
+                            } catch (NumberFormatException _) {
+                                IO.println("Invalid tries value.");
+                            }
+                        }
+                        case GET_SELF_DESTRUCT_TRIES -> IO.println(vault.getSelfDestructTries());
+                        case DISABLE_SELF_DESTRUCT -> {
+                            if (confirmAction(usageCommand)) {
+                                vault.disableSelfDestruct();
+                            }
+                        }
+                        case IS_SELF_DESTRUCT_ENABLED -> IO.println(vault.isSelfDestructEnabled());
+                        case PUT_FILE -> {
+                            Path from = Path.of(IO.readln("From path: "));
+                            Path to = Path.of(IO.readln("To path: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.putFiles(from, to);
+                            }
+                        }
+                        case GET_FILE -> {
+                            Path from = Path.of(IO.readln("From path: "));
+                            Path to = Path.of(IO.readln("To path: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.getFiles(from, to);
+                            }
+                        }
+                        case GET_FILES_LIST -> vault.getFilesList().stream().sorted().forEach(IO::println);
+                        case CHANGE_FILE_NAME -> {
+                            Path filePath = Path.of(IO.readln("File path: "));
+                            String newName = IO.readln("Enter the new name: ");
+                            if (confirmAction(usageCommand)) {
+                                vault.changeFileName(filePath, newName);
+                            }
+                        }
+                        case DELETE_FILE -> {
+                            Path filePath = Path.of(IO.readln("Path of file to delete: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.deleteFile(filePath);
+                            }
+                        }
+                        case MAKE_DIRECTORY -> {
+                            Path filePath = Path.of(IO.readln("Path of directory to make: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.makeDirectory(filePath);
+                            }
+                        }
+                        case DELETE_DIRECTORY -> {
+                            Path filePath = Path.of(IO.readln("Path of directory to delete: "));
+                            if (confirmAction(usageCommand)) {
+                                vault.deleteDirectory(filePath);
+                            }
+                        }
+                        case ABORT_ALL_FILE_TRANSFERS -> {
+                            if (confirmAction(usageCommand)) {
+                                vault.abortAllFileTransfers();
+                            }
+                        }
+                        case PUT_PASSWORD -> {
+                            String name = IO.readln("Name of password: ");
+                            IO.println("Enter the password: ");
+                            String value = readConfidentialString();
+                            vault.putPassword(name, value);
+                        }
+                        case GET_PASSWORD -> {
+                            String value = vault.getPassword(IO.readln("Enter the name: "));
+                            String printString = "The password is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
+                            IO.readln(printString);
+                            IO.println("\033[2J\033[H");
+                        }
+                        case DELETE_PASSWORD -> {
+                            String name = IO.readln("Enter the name: ");
+                            if (confirmAction(usageCommand)) {
+                                vault.deletePassword(name);
+                            }
+                        }
+                        case SEARCH_PASSWORD -> IO.println(vault.searchPassword(IO.readln("Enter the prefix: ")));
+                        case DELETE_ALL_PASSWORDS -> {
+                            if (confirmAction(usageCommand)) {
+                                vault.clearAllStoredPasswords();
+                            }
+                        }
+                        case PUT_API_KEY -> {
+                            String name = IO.readln("Name of API Key: ");
+                            IO.println("Enter the API Key: ");
+                            String value = readConfidentialString();
+                            vault.putAPIKey(name, value);
+                        }
+                        case GET_API_KEY -> {
+                            String value = vault.getAPIKey(IO.readln("Enter the name: "));
+                            String printString = "The API Key is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
+                            IO.readln(printString);
+                            IO.println("\033[2J\033[H");
+                        }
+                        case DELETE_API_KEY -> {
+                            String name = IO.readln("Enter the name: ");
+                            if (confirmAction(usageCommand)) {
+                                vault.deleteAPIKey(name);
+                            }
+                        }
+                        case SEARCH_API_KEY -> IO.println(vault.searchAPIKey(IO.readln("Enter the prefix: ")));
+                        case DELETE_ALL_API_KEYS -> {
+                            if (confirmAction(usageCommand)) {
+                                vault.clearAllStoredAPIKeys();
+                            }
+                        }
+                        case GET_NUMBER_OF_PENDING_FILE_TRANSFERS ->
+                                IO.println(fileTransferMonitor.getNumberOfPendingFileTransfers());
+                        case GET_NUMBER_OF_FAILED_FILE_TRANSFERS ->
+                                IO.println(fileTransferMonitor.getNumberOfFailedFileTransfers());
+                        case GET_FAILED_FILE_TRANSFERS_LIST ->
+                                IO.println(fileTransferMonitor.getFailedFileTransfersList());
+                        case GET_FILE_TRANSFER_PROGRESS -> IO.println(fileTransferMonitor.getFileTransferProgress());
+                        case GET_LOGS -> {
+                            try {
+                                int number = Integer.parseInt(IO.readln("Enter the number of last logs lines you want to see: "));
+                                IO.println(logger.getLogs(number));
+                            } catch (NumberFormatException _) {
+                                IO.println("Invalid number of lines.");
+                            }
+                        }
                     }
                 }
             } catch (Exception e) {
                 IO.println("Exception occurred : " + e);
             }
+            IO.println();
         }
         vault.closeVault();
     }
