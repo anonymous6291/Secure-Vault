@@ -224,6 +224,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         } else {
             FileData fileData = allFilesDataMapping.get(from);
             if (fileData == null) {
+                IO.println("Null: " + from);
                 return;
             }
             String originalFileName = fileData.getOriginalName();
@@ -278,9 +279,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
     public void getFiles(Path from, Path to) throws FileNotFoundException {
         Path fromPath = Path.of(fileStoragePath.toString(), from.toString());
-        if (!Files.exists(fromPath)) {
-            throw new FileNotFoundException("[" + from + "] doesn't exist.");
-        }
         List<FileTransferData> fileTransferDataList = new LinkedList<>();
         recursivelyAddFiles(fromPath, to, FileTransferMode.DECRYPT, fileTransferDataList, new FileCopyOption());
         fileTransferManager.transferFiles(fileTransferDataList);
@@ -430,6 +428,49 @@ public class FileManager implements FileTransferManagerListener, Writable {
             fileManagerUpdateListener.newUpdate("Failed to add file [" + fileTransferData.from() + "] to the vault.");
         } else {
             fileManagerUpdateListener.newUpdate("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
+        }
+    }
+
+    static class PathTrie {
+        static final String pathSeparator = File.separator;
+        static class PathTrieNode {
+            ConcurrentMap<String, PathTrieNode> directories = new ConcurrentHashMap<>();
+            ConcurrentMap<String, String> filesMaskedNames = new ConcurrentHashMap<>();
+
+            void setFile(String name, String maskedName) {
+                filesMaskedNames.put(name, maskedName);
+            }
+
+            String getMaskedName(String name) {
+                return filesMaskedNames.get(name);
+            }
+
+            boolean isFile(String name) {
+                return filesMaskedNames.containsKey(name);
+            }
+
+            PathTrieNode setDirectory(String name) {
+                PathTrieNode pathTrieNode = directories.get(name);
+                if (pathTrieNode == null) {
+                    directories.put(name, pathTrieNode = new PathTrieNode());
+                }
+                return pathTrieNode;
+            }
+
+            PathTrieNode getDirectory(String name) {
+                return directories.get(name);
+            }
+
+            boolean isDirectory(String name) {
+                return directories.containsKey(name);
+            }
+        }
+
+        PathTrieNode root = new PathTrieNode();
+
+        void putFile(String path, String maskedName) {
+            PathTrieNode current = root;
+            String[] subPaths = path.split(pathSeparator);
         }
     }
 

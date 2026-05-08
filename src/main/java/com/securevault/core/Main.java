@@ -53,6 +53,7 @@ public class Main implements FileManagerUpdateListener {
         GET_FAILED_FILE_TRANSFERS_LIST,
         GET_FILE_TRANSFER_PROGRESS,
         GET_LOGS,
+        CLEAR_LOGS,
     }
 
     private static final Map<String, UsageCommand> COMMANDS = new LinkedHashMap<>();
@@ -106,6 +107,7 @@ public class Main implements FileManagerUpdateListener {
         COMMANDS.put("gfftl", UsageCommand.GET_FAILED_FILE_TRANSFERS_LIST);
         COMMANDS.put("gftp", UsageCommand.GET_FILE_TRANSFER_PROGRESS);
         COMMANDS.put("gl", UsageCommand.GET_LOGS);
+        COMMANDS.put("cl", UsageCommand.CLEAR_LOGS);
     }
 
     static void main(String[] args) {
@@ -354,6 +356,11 @@ public class Main implements FileManagerUpdateListener {
                                 IO.println("Invalid number of lines.");
                             }
                         }
+                        case CLEAR_LOGS -> {
+                            if (confirmAction(usageCommand)) {
+                                vault.clearLogs();
+                            }
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -365,9 +372,9 @@ public class Main implements FileManagerUpdateListener {
     }
 
     private static void dependentMode() {
-        char[] password = IO.readln("Password:").toCharArray();
-        byte[] iv = decoder.decode(IO.readln("IV:"));
-        byte[] salt = decoder.decode(IO.readln("Salt:"));
+        char[] password = IO.readln().toCharArray();
+        byte[] iv = decoder.decode(IO.readln());
+        byte[] salt = decoder.decode(IO.readln());
         try {
             initHandles(password, iv, salt);
         } catch (Exception e) {
@@ -617,6 +624,7 @@ public class Main implements FileManagerUpdateListener {
                             }
                         }
                     }
+                    case CLEAR_LOGS -> vault.clearLogs();
                 }
             }
         } catch (Exception e) {
@@ -715,6 +723,7 @@ enum CommandType {
     GET_FAILED_FILE_TRANSFERS_LIST,
     GET_FILE_TRANSFER_PROGRESS,
     GET_LOG,
+    CLEAR_LOGS
 }
 
 enum OutputType {

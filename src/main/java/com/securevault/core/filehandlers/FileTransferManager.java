@@ -7,10 +7,9 @@ import com.securevault.core.configurations.RandomValueGenerator;
 import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 
 import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -18,9 +17,11 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 public class FileTransferManager implements FileTransferMonitor {
-    private static final int MAX_PARALLEL_FILE_TRANSFERS = 5;
+    private static final int MAX_PARALLEL_FILE_TRANSFERS = Runtime.getRuntime().availableProcessors() / 2;
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final Semaphore universalLock = new Semaphore(1, true);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
@@ -220,7 +221,7 @@ public class FileTransferManager implements FileTransferMonitor {
         return (dataTransferred.get() * 100.0) / data;
     }
 
-    public enum FileTransferStatus {
+    enum FileTransferStatus {
         FAILED, PENDING, COMPLETED, ABORTED
     }
 
@@ -254,33 +255,36 @@ public class FileTransferManager implements FileTransferMonitor {
         @Override
         public FileTransferStatus call() {
             try (BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(from)); BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(Files.newOutputStream(to))) {
-                byte[] iv, salt;
-                int cipherMode;
+                InputStream inputStream;
+                OutputStream outputStream;
                 if (mode == FileTransferMode.ENCRYPT) {
-                    iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
-                    salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+                    byte[] iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
+                    byte[] salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
                     bufferedOutputStream.write(iv);
                     bufferedOutputStream.write(salt);
-                    cipherMode = Cipher.ENCRYPT_MODE;
+                    CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));
+                    outputStream = new GZIPOutputStream(cipherOutputStream);
+                    inputStream = bufferedInputStream;
                 } else {
                     int ivLength = ConfigurationDefaults.IV_LENGTH;
                     int saltLength = ConfigurationDefaults.SALT_LENGTH;
-                    iv = new byte[ivLength];
-                    salt = new byte[saltLength];
+                    byte[] iv = new byte[ivLength];
+                    byte[] salt = new byte[saltLength];
                     if (!(bufferedInputStream.read(iv) == ivLength && bufferedInputStream.read(salt) == saltLength)) {
                         throw new RuntimeException("Corrupted file [" + from + "] .");
                     }
-                    cipherMode = Cipher.DECRYPT_MODE;
+                    CipherInputStream cipherInputStream = new CipherInputStream(bufferedInputStream, CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE));
+                    inputStream = new GZIPInputStream(cipherInputStream);
+                    outputStream = bufferedOutputStream;
                 }
-                Cipher cipher = CipherManager.getCipher(key, iv, salt, cipherMode);
-                CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
                 byte[] chunk = new byte[CHUNK_SIZE];
                 int len;
-                while (!abortTransfer && (len = bufferedInputStream.read(chunk)) > 0) {
-                    cipherOutputStream.write(chunk, 0, len);
+                while (!abortTransfer && (len = inputStream.read(chunk)) > 0) {
+                    outputStream.write(chunk, 0, len);
                     dataTransferred.addAndGet(len);
                 }
-                cipherOutputStream.close();
+                inputStream.close();
+                outputStream.close();
                 if (abortTransfer) {
                     Files.delete(to);
                     return fileTransferStatus = FileTransferStatus.ABORTED;

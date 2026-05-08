@@ -235,6 +235,10 @@ public class Vault {
         return logger;
     }
 
+    public void clearLogs() {
+        logger.clearLogs();
+    }
+
     public void closeVault() {
         if (!isVaultOpen()) {
             return;

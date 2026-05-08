@@ -20,8 +20,8 @@ import java.util.concurrent.Semaphore;
 public class Logger {
     private static final ConfigurationDefaults.Data configurations = ConfigurationDefaults.getDefault(Logger.class);
     private final Semaphore lock = new Semaphore(1, true);
-    private final Path encrLogFile;
-    private final Path decrLogFile;
+    private final Path encryptedLogFile;
+    private final Path decryptedLogFile;
     private final char[] encryptionKey;
     private BufferedOutputStream logFileWriter;
 
@@ -41,8 +41,8 @@ public class Logger {
                 Files.createFile(decryptedLogFile);
             }
             logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile, StandardOpenOption.APPEND));
-            encrLogFile = encryptedLogFile;
-            decrLogFile = decryptedLogFile;
+            this.encryptedLogFile = encryptedLogFile;
+            this.decryptedLogFile = decryptedLogFile;
             encryptionKey = key;
         } catch (Exception e) {
             throw new RuntimeException("Initialization of Logger failed : " + e);
@@ -103,7 +103,7 @@ public class Logger {
             unlock();
             throw new RuntimeException("Exception occurred in Logger while closing the stream : " + e);
         }
-        try (BufferedReader bufferedReader = Files.newBufferedReader(decrLogFile)) {
+        try (BufferedReader bufferedReader = Files.newBufferedReader(decryptedLogFile)) {
             List<String> logs = new LinkedList<>();
             String nextLine;
             while ((nextLine = bufferedReader.readLine()) != null) {
@@ -119,7 +119,7 @@ public class Logger {
             throw new RuntimeException("Exception occurred while getting logs.");
         } finally {
             try {
-                logFileWriter = new BufferedOutputStream(Files.newOutputStream(decrLogFile, StandardOpenOption.APPEND));
+                logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile, StandardOpenOption.APPEND));
             } catch (Exception e) {
                 try {
                     close0();
@@ -136,7 +136,7 @@ public class Logger {
         } catch (Exception _) {
         }
         try {
-            logFileWriter = new BufferedOutputStream(Files.newOutputStream(decrLogFile));
+            logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile));
         } catch (Exception e) {
             try {
                 close0();
@@ -151,12 +151,12 @@ public class Logger {
     private void close0() throws Exception {
         logFileWriter.close();
         Cipher cipher = CipherManager.getCipher(encryptionKey, configurations.iv(), configurations.salt(), Cipher.ENCRYPT_MODE);
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(Files.newOutputStream(encrLogFile), cipher);
-        BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decrLogFile));
+        CipherOutputStream cipherOutputStream = new CipherOutputStream(Files.newOutputStream(encryptedLogFile), cipher);
+        BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decryptedLogFile));
         bufferedInputStream.transferTo(cipherOutputStream);
         cipherOutputStream.close();
         bufferedInputStream.close();
-        Files.delete(decrLogFile);
+        Files.delete(decryptedLogFile);
     }
 
     public void close() {
