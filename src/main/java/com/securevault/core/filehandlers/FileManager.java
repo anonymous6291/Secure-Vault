@@ -276,7 +276,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void addFiles(Path from, Path to) throws FileNotFoundException {
+    public void addDirectory(Path from, Path to) throws FileNotFoundException {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
@@ -307,7 +307,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void getFiles(Path from, Path to) {
+    public void getDirectory(Path from, Path to) {
         from = Path.of(FILE_SEPARATOR, from.toString());
         if (!lock()) {
             return;

@@ -33,7 +33,9 @@ enum CommandType {
     DISABLE_SELF_DESTRUCT,
     IS_SELF_DESTRUCT_ENABLED,
     PUT_FILE,
+    PUT_DIRECTORY,
     GET_FILE,
+    GET_DIRECTORY,
     GET_FILES_LIST,
     CHANGE_FILE_NAME,
     DELETE_FILE,
@@ -95,7 +97,9 @@ public class Main implements FileManagerUpdateListener {
         COMMANDS.put("dsd", UsageCommand.DISABLE_SELF_DESTRUCT);
         COMMANDS.put("isde", UsageCommand.IS_SELF_DESTRUCT_ENABLED);
         COMMANDS.put("pf", UsageCommand.PUT_FILE);
+        COMMANDS.put("pd", UsageCommand.PUT_DIRECTORY);
         COMMANDS.put("gf", UsageCommand.GET_FILE);
+        COMMANDS.put("gd", UsageCommand.GET_DIRECTORY);
         COMMANDS.put("gfl", UsageCommand.GET_FILES_LIST);
         COMMANDS.put("cfn", UsageCommand.CHANGE_FILE_NAME);
         COMMANDS.put("df", UsageCommand.DELETE_FILE);
@@ -258,18 +262,26 @@ public class Main implements FileManagerUpdateListener {
                             }
                         }
                         case IS_SELF_DESTRUCT_ENABLED -> IO.println(vault.isSelfDestructEnabled());
-                        case PUT_FILE -> {
+                        case PUT_FILE, PUT_DIRECTORY -> {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                vault.putFiles(from, to);
+                                if (usageCommand == UsageCommand.PUT_FILE) {
+                                    vault.putFile(from, to);
+                                } else {
+                                    vault.putDirectory(from, to);
+                                }
                             }
                         }
-                        case GET_FILE -> {
+                        case GET_FILE, GET_DIRECTORY -> {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                vault.getFiles(from, to);
+                                if (usageCommand == UsageCommand.GET_FILE) {
+                                    vault.getFile(from, to);
+                                } else {
+                                    vault.getDirectory(from, to);
+                                }
                             }
                         }
                         case GET_FILES_LIST ->
@@ -515,18 +527,26 @@ public class Main implements FileManagerUpdateListener {
                     case DISABLE_SELF_DESTRUCT -> vault.disableSelfDestruct();
                     case IS_SELF_DESTRUCT_ENABLED ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.isSelfDestructEnabled()))));
-                    case PUT_FILE -> {
+                    case PUT_FILE, PUT_DIRECTORY -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             Path to = Path.of(args.get(1));
-                            vault.putFiles(from, to);
+                            if (commandType == CommandType.PUT_FILE) {
+                                vault.putFile(from, to);
+                            } else {
+                                vault.putDirectory(from, to);
+                            }
                         }
                     }
-                    case GET_FILE -> {
+                    case GET_FILE, GET_DIRECTORY -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             Path to = Path.of(args.get(1));
-                            vault.getFiles(from, to);
+                            if (commandType == CommandType.GET_FILE) {
+                                vault.getFile(from, to);
+                            } else {
+                                vault.getDirectory(from, to);
+                            }
                         }
                     }
                     case GET_FILES_LIST -> {
@@ -704,7 +724,9 @@ public class Main implements FileManagerUpdateListener {
         DISABLE_SELF_DESTRUCT,
         IS_SELF_DESTRUCT_ENABLED,
         PUT_FILE,
+        PUT_DIRECTORY,
         GET_FILE,
+        GET_DIRECTORY,
         GET_FILES_LIST,
         CHANGE_FILE_NAME,
         DELETE_FILE,

@@ -103,12 +103,20 @@ public class Vault {
         return false;
     }
 
-    public void putFiles(Path from, Path to) throws FileNotFoundException {
-        fileManager.addFiles(from, to);
+    public void putFile(Path from, Path to) throws FileNotFoundException {
+        fileManager.addFile(from, to);
     }
 
-    public void getFiles(Path from, Path to) throws FileNotFoundException {
-        fileManager.getFiles(from, to);
+    public void putDirectory(Path from, Path to) throws FileNotFoundException {
+        fileManager.addDirectory(from, to);
+    }
+
+    public void getFile(Path from, Path to) {
+        fileManager.getFile(from, to);
+    }
+
+    public void getDirectory(Path from, Path to) {
+        fileManager.getDirectory(from, to);
     }
 
     public boolean changeFileName(Path path, String newName) {
