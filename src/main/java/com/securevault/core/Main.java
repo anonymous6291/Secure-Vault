@@ -139,7 +139,7 @@ public class Main implements FileManagerUpdateListener {
 
     private static void independentMode() {
         try {
-            String path = System.getProperty("user.dir") + "/Secure Vault";
+            String path = System.getProperty("user.dir");
             boolean create = false;
             String password = "WORLD";
             //path = IO.readln("Enter the vault path: ");

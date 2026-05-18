@@ -39,20 +39,15 @@ public class Vault {
     public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener) throws Exception {
         assertVaultKeyRequirement(password);
         this.password = password.clone();
-        Path vaultPath;
+        Path vaultPath = Paths.get(path, VAULT_FOLDER_NAME);
         if (create) {
-            vaultPath = Paths.get(path, VAULT_FOLDER_NAME);
             if (Files.exists(vaultPath)) {
                 throw new VaultException("Vault already exists.");
             }
             Files.createDirectories(vaultPath);
         } else {
-            vaultPath = Paths.get(path);
-            if (!Files.exists(vaultPath)) {
+            if (!Files.isDirectory(vaultPath)) {
                 throw new VaultException("Vault doesn't exist.");
-            }
-            if (!(Files.isDirectory(vaultPath) && Files.isRegularFile(Path.of(vaultPath.toString(), CONFIG_FILE_NAME)))) {
-                throw new VaultException("Not a valid vault.");
             }
         }
         this.vaultPath = vaultPath.toString();

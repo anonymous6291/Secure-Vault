@@ -27,6 +27,7 @@ import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
 public class FileManager implements FileTransferManagerListener, Writable {
+    private static final String FILE_SEPARATOR = File.separator;
     private static final String FILE_STORAGE_FOLDER_NAME = "files";
     private static final String FILE_DATA_NAME = "files.data";
     private static final String FILE_DATA_END_MARKER = "#############################END#############################";
@@ -72,6 +73,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 String path = data[i - 2];
                 String maskedName = data[i - 1];
                 String originalName = data[i];
+                if (path.equals(FILE_DATA_END_MARKER) || maskedName.equals(FILE_DATA_END_MARKER) || originalName.equals(FILE_DATA_END_MARKER)) {
+                    break;
+                }
                 Path maskedFilePath = Path.of(fileStoragePath.toString(), path, maskedName);
                 File file = maskedFilePath.toFile();
                 if (!file.exists()) {
@@ -112,8 +116,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
     private Path removeParent(Path childPath, Path parentPath) {
         String child = childPath.toString();
         String parent = parentPath.toString();
-        String removed = child.substring(child.indexOf(parent) + parent.length() + 1);
-        return Path.of(removed);
+        String removed = child.substring(child.indexOf(parent) + parent.length());
+        return Path.of(FILE_SEPARATOR, removed);
     }
 
     private void incrementNextFileName() {
@@ -259,6 +263,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
+        to = Path.of(FILE_SEPARATOR, to.toString());
         if (!lock()) {
             return;
         }
@@ -275,6 +280,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
+        to = Path.of(FILE_SEPARATOR, to.toString());
         if (!lock()) {
             return;
         }
@@ -288,6 +294,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getFile(Path from, Path to) {
+        from = Path.of(FILE_SEPARATOR, from.toString());
         if (!lock()) {
             return;
         }
@@ -301,6 +308,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getFiles(Path from, Path to) {
+        from = Path.of(FILE_SEPARATOR, from.toString());
         if (!lock()) {
             return;
         }
@@ -308,9 +316,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
             allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> {
-                Path originalFilePath = fileData.getOriginalFilePath();
-                Path toPath = Path.of(to.toString(), originalFilePath.getParent().toString());
-                addFileForTransfer(originalFilePath, toPath, fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
+                addFileForTransfer(fileData.getOriginalFilePath(), Path.of(to.toString(), fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
             });
             fileTransferManager.transferFiles(fileTransferDataList);
         } finally {
@@ -319,6 +325,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public boolean changeFileName(Path path, String newOriginalName) {
+        path = Path.of(FILE_SEPARATOR, path.toString());
         if (!lock()) {
             return false;
         }
@@ -349,6 +356,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteFile(Path path) {
+        path = Path.of(FILE_SEPARATOR, path.toString());
         if (!lock()) {
             return;
         }
@@ -357,7 +365,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
             if (fileData != null) {
                 deleteFile0(fileData);
             }
-        } catch (Exception _) {
         } finally {
             unlock();
         }
@@ -372,6 +379,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteDirectory(Path path) {
+        path = Path.of(FILE_SEPARATOR, path.toString());
         if (!lock()) {
             return;
         }
@@ -383,10 +391,11 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public List<String> getFilesList(Path path) {
+        path = Path.of(FILE_SEPARATOR, path.toString());
+        List<String> fileDataList = new LinkedList<>();
         if (!lock()) {
             return null;
         }
-        List<String> fileDataList = new LinkedList<>();
         try {
             allFiles.getAllFilesDataList(path.toString()).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
         } finally {
@@ -410,7 +419,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             bufferedOutputStream.write(salt);
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
-            for (FileData data : allFiles.getAllFilesDataList("")) {
+            for (FileData data : allFiles.getAllFilesDataList(FILE_SEPARATOR)) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
             }
@@ -458,15 +467,22 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     static class PathTrie {
-        static final String pathSeparator = File.separator;
-        PathTrieNode root = new PathTrieNode("");
+        static final String SEPARATOR = FILE_SEPARATOR;
+        static final char SEPARATOR_CHAR = SEPARATOR.charAt(0);
+        PathTrieNode root = new PathTrieNode(SEPARATOR);
 
         String[] splitPath(String path) {
-            return path.split(pathSeparator);
+            int n = path.length();
+            for (int i = 0; i < n; i++) {
+                if (path.charAt(i) != SEPARATOR_CHAR) {
+                    return path.substring(i).split(SEPARATOR);
+                }
+            }
+            return new String[]{};
         }
 
         String appendPath(String first, String second) {
-            return first + pathSeparator + second;
+            return Path.of(first, SEPARATOR, second).toString();
         }
 
         PathTrieNode getLastDirectory0(String[] path, int s, int e) {
@@ -542,6 +558,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
         boolean directoryExists(String path) {
             String[] paths = splitPath(path);
             int n = paths.length - 1;
+            if (n < 0) {
+                return true;
+            }
             PathTrieNode last = getLastDirectory0(paths, 0, n - 1);
             return last != null && last.isDirectory(paths[n]);
         }
@@ -576,11 +595,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             }
 
             PathTrieNode putDirectory(String name) {
-                PathTrieNode pathTrieNode = directories.get(name);
-                if (pathTrieNode == null) {
-                    directories.put(name, pathTrieNode = new PathTrieNode(name));
-                }
-                return pathTrieNode;
+                return directories.computeIfAbsent(name, PathTrieNode::new);
             }
 
             PathTrieNode getDirectory(String name) {
@@ -591,10 +606,10 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return directories.containsKey(name);
             }
 
-            void getFilesListRecursively(List<FileData> files) {
-                files.addAll(filesData.values());
+            void getFilesListRecursively(List<FileData> fileDataList) {
+                fileDataList.addAll(filesData.values());
                 for (PathTrieNode subPaths : directories.values()) {
-                    subPaths.getFilesListRecursively(files);
+                    subPaths.getFilesListRecursively(fileDataList);
                 }
             }
 
