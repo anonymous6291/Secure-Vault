@@ -20,42 +20,53 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class Main implements FileManagerUpdateListener {
-    enum UsageCommand {
-        VERSION,
-        CHANGE_PASSWORD,
-        SELF_DESTRUCT,
-        LOCKDOWN,
-        SET_SELF_DESTRUCT,
-        GET_SELF_DESTRUCT_TRIES,
-        DISABLE_SELF_DESTRUCT,
-        IS_SELF_DESTRUCT_ENABLED,
-        PUT_FILE,
-        GET_FILE,
-        GET_FILES_LIST,
-        CHANGE_FILE_NAME,
-        DELETE_FILE,
-        MAKE_DIRECTORY,
-        DELETE_DIRECTORY,
-        ABORT_ALL_FILE_TRANSFERS,
-        PUT_PASSWORD,
-        GET_PASSWORD,
-        DELETE_PASSWORD,
-        SEARCH_PASSWORD,
-        DELETE_ALL_PASSWORDS,
-        PUT_API_KEY,
-        GET_API_KEY,
-        DELETE_API_KEY,
-        SEARCH_API_KEY,
-        DELETE_ALL_API_KEYS,
-        GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
-        GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
-        GET_FAILED_FILE_TRANSFERS_LIST,
-        GET_FILE_TRANSFER_PROGRESS,
-        GET_LOGS,
-        CLEAR_LOGS,
-    }
+enum CommandType {
+    OPEN,
+    IS_OPEN,
+    CLOSE,
+    VERSION,
+    CHANGE_PASSWORD,
+    SELF_DESTRUCT,
+    LOCKDOWN,
+    SET_SELF_DESTRUCT,
+    GET_SELF_DESTRUCT_TRIES,
+    DISABLE_SELF_DESTRUCT,
+    IS_SELF_DESTRUCT_ENABLED,
+    PUT_FILE,
+    GET_FILE,
+    GET_FILES_LIST,
+    CHANGE_FILE_NAME,
+    DELETE_FILE,
+    MAKE_DIRECTORY,
+    DELETE_DIRECTORY,
+    ABORT_ALL_FILE_TRANSFERS,
+    PUT_PASSWORD,
+    GET_PASSWORD,
+    DELETE_PASSWORD,
+    SEARCH_PASSWORD,
+    DELETE_ALL_PASSWORDS,
+    PUT_API_KEY,
+    GET_API_KEY,
+    DELETE_API_KEY,
+    SEARCH_API_KEY,
+    DELETE_ALL_API_KEYS,
+    RESPONSE,
+    GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
+    GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
+    GET_FAILED_FILE_TRANSFERS_LIST,
+    GET_FILE_TRANSFER_PROGRESS,
+    GET_LOG,
+    CLEAR_LOGS
+}
 
+enum OutputType {
+    ERROR,
+    INVALID_COMMAND,
+    RESPONSE,
+    UPDATE,
+}
+
+public class Main implements FileManagerUpdateListener {
     private static final Map<String, UsageCommand> COMMANDS = new LinkedHashMap<>();
     private static final String DEPENDENT_MODE_ARGUMENT = "-d";
     private static final String EXIT_COMMAND = "EXIT";
@@ -72,7 +83,6 @@ public class Main implements FileManagerUpdateListener {
     private static Cipher decryptCipher;
     private static FileTransferMonitor fileTransferMonitor;
     private static Vault vault;
-
 
     static {
         jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -262,7 +272,8 @@ public class Main implements FileManagerUpdateListener {
                                 vault.getFiles(from, to);
                             }
                         }
-                        case GET_FILES_LIST -> vault.getFilesList().stream().sorted().forEach(IO::println);
+                        case GET_FILES_LIST ->
+                                vault.getFilesList(Path.of(IO.readln("Enter the path: "))).forEach(IO::println);
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));
                             String newName = IO.readln("Enter the new name: ");
@@ -518,8 +529,11 @@ public class Main implements FileManagerUpdateListener {
                             vault.getFiles(from, to);
                         }
                     }
-                    case GET_FILES_LIST ->
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList()));
+                    case GET_FILES_LIST -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList(Path.of(args.getFirst()))));
+                        }
+                    }
                     case CHANGE_FILE_NAME -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
@@ -679,6 +693,41 @@ public class Main implements FileManagerUpdateListener {
     public void newUpdate(String update) {
         sendOutput(new Output(OutputType.UPDATE, 0, List.of(update)));
     }
+
+    enum UsageCommand {
+        VERSION,
+        CHANGE_PASSWORD,
+        SELF_DESTRUCT,
+        LOCKDOWN,
+        SET_SELF_DESTRUCT,
+        GET_SELF_DESTRUCT_TRIES,
+        DISABLE_SELF_DESTRUCT,
+        IS_SELF_DESTRUCT_ENABLED,
+        PUT_FILE,
+        GET_FILE,
+        GET_FILES_LIST,
+        CHANGE_FILE_NAME,
+        DELETE_FILE,
+        MAKE_DIRECTORY,
+        DELETE_DIRECTORY,
+        ABORT_ALL_FILE_TRANSFERS,
+        PUT_PASSWORD,
+        GET_PASSWORD,
+        DELETE_PASSWORD,
+        SEARCH_PASSWORD,
+        DELETE_ALL_PASSWORDS,
+        PUT_API_KEY,
+        GET_API_KEY,
+        DELETE_API_KEY,
+        SEARCH_API_KEY,
+        DELETE_ALL_API_KEYS,
+        GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
+        GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
+        GET_FAILED_FILE_TRANSFERS_LIST,
+        GET_FILE_TRANSFER_PROGRESS,
+        GET_LOGS,
+        CLEAR_LOGS,
+    }
 }
 
 record Command(CommandType type, int commandId, List<String> args) {
@@ -687,58 +736,8 @@ record Command(CommandType type, int commandId, List<String> args) {
 record Output(OutputType type, int commandId, List<String> args) {
 }
 
-enum CommandType {
-    OPEN,
-    IS_OPEN,
-    CLOSE,
-    VERSION,
-    CHANGE_PASSWORD,
-    SELF_DESTRUCT,
-    LOCKDOWN,
-    SET_SELF_DESTRUCT,
-    GET_SELF_DESTRUCT_TRIES,
-    DISABLE_SELF_DESTRUCT,
-    IS_SELF_DESTRUCT_ENABLED,
-    PUT_FILE,
-    GET_FILE,
-    GET_FILES_LIST,
-    CHANGE_FILE_NAME,
-    DELETE_FILE,
-    MAKE_DIRECTORY,
-    DELETE_DIRECTORY,
-    ABORT_ALL_FILE_TRANSFERS,
-    PUT_PASSWORD,
-    GET_PASSWORD,
-    DELETE_PASSWORD,
-    SEARCH_PASSWORD,
-    DELETE_ALL_PASSWORDS,
-    PUT_API_KEY,
-    GET_API_KEY,
-    DELETE_API_KEY,
-    SEARCH_API_KEY,
-    DELETE_ALL_API_KEYS,
-    RESPONSE,
-    GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
-    GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
-    GET_FAILED_FILE_TRANSFERS_LIST,
-    GET_FILE_TRANSFER_PROGRESS,
-    GET_LOG,
-    CLEAR_LOGS
-}
-
-enum OutputType {
-    ERROR,
-    INVALID_COMMAND,
-    RESPONSE,
-    UPDATE,
-}
-
 class ResponseHandler {
     private final CompletableFuture<String> response = new CompletableFuture<>();
-
-    public void setResponse(String response) {
-        this.response.complete(response);
-    }
 
     public String getResponse() {
         try {
@@ -746,5 +745,9 @@ class ResponseHandler {
         } catch (Exception _) {
             return "";
         }
+    }
+
+    public void setResponse(String response) {
+        this.response.complete(response);
     }
 }

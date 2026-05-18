@@ -22,12 +22,12 @@ public class ConfigurationManager implements Writable {
     private static final ObjectMapper json = new ObjectMapper();
     private static final Base64.Encoder base64Encoder = Base64.getEncoder();
     private static final Base64.Decoder base64Decoder = Base64.getDecoder();
-    private final Semaphore lock = new Semaphore(1, true);
 
     static {
         json.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
+    private final Semaphore lock = new Semaphore(1, true);
     private final Path configurationPath;
     private final Configuration configuration;
     private final char[] vaultKey;

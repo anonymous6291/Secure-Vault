@@ -28,10 +28,10 @@ public class PasswordAndAPIKeyManager implements Writable {
     private final Path passwordDataPath;
     private final Logger logger;
     private final char[] key;
-    private Trie apiKeys;
-    private Trie passwords;
     private final byte[][] ivs = new byte[2][];
     private final byte[][] salts = new byte[2][];
+    private Trie apiKeys;
+    private Trie passwords;
 
     public PasswordAndAPIKeyManager(Path basePath, char[] key, Logger logger) throws Exception {
         Path parentPath = Path.of(basePath.toString(), DIRECTORY_NAME);
@@ -182,63 +182,6 @@ public class PasswordAndAPIKeyManager implements Writable {
     }
 
     static class Trie {
-        static class TrieNode {
-            private final Map<Character, TrieNode> children = new ConcurrentHashMap<>();
-            private String name;
-            private String value;
-
-            TrieNode getOrMakeChild(char c) {
-                if (children.containsKey(c)) {
-                    return children.get(c);
-                }
-                TrieNode child = new TrieNode();
-                children.put(c, child);
-                return child;
-            }
-
-            TrieNode getChild(char c) {
-                return children.get(c);
-            }
-
-            Collection<TrieNode> getChildren() {
-                return children.values();
-            }
-
-            void removeChild(char c) {
-                children.remove(c);
-            }
-
-            boolean hasChildrenOrData() {
-                return !children.isEmpty() || value != null;
-            }
-
-            String getKey() {
-                return name;
-            }
-
-            void setKey(String name) {
-                this.name = name;
-            }
-
-            String getValue() {
-                return value;
-            }
-
-            void setValue(String value) {
-                this.value = value;
-            }
-
-            void clearValue() {
-                name = null;
-                value = null;
-            }
-
-            void clear() {
-                clearValue();
-                children.clear();
-            }
-        }
-
         private final TrieNode root = new TrieNode();
         private final Semaphore lock = new Semaphore(1, true);
 
@@ -355,6 +298,63 @@ public class PasswordAndAPIKeyManager implements Writable {
             getAllPairsRecursively(root, keys);
             unlock();
             return keys;
+        }
+
+        static class TrieNode {
+            private final Map<Character, TrieNode> children = new ConcurrentHashMap<>();
+            private String name;
+            private String value;
+
+            TrieNode getOrMakeChild(char c) {
+                if (children.containsKey(c)) {
+                    return children.get(c);
+                }
+                TrieNode child = new TrieNode();
+                children.put(c, child);
+                return child;
+            }
+
+            TrieNode getChild(char c) {
+                return children.get(c);
+            }
+
+            Collection<TrieNode> getChildren() {
+                return children.values();
+            }
+
+            void removeChild(char c) {
+                children.remove(c);
+            }
+
+            boolean hasChildrenOrData() {
+                return !children.isEmpty() || value != null;
+            }
+
+            String getKey() {
+                return name;
+            }
+
+            void setKey(String name) {
+                this.name = name;
+            }
+
+            String getValue() {
+                return value;
+            }
+
+            void setValue(String value) {
+                this.value = value;
+            }
+
+            void clearValue() {
+                name = null;
+                value = null;
+            }
+
+            void clear() {
+                clearValue();
+                children.clear();
+            }
         }
     }
 }

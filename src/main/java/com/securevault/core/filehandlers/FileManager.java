@@ -17,7 +17,10 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
@@ -81,7 +84,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                             lastFileName = maskedName;
                         }
                         FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
-                        allFiles.putFileData(Path.of(path, originalName).toString(), currentFileData);
+                        allFiles.putFileData(currentFileData);
                         filesCount++;
                     }
                 }
@@ -109,7 +112,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
     private Path removeParent(Path childPath, Path parentPath) {
         String child = childPath.toString();
         String parent = parentPath.toString();
-        return Path.of(child.substring(child.indexOf(parent) + parent.length() + 1));
+        String removed = child.substring(child.indexOf(parent) + parent.length() + 1);
+        return Path.of(removed);
     }
 
     private void incrementNextFileName() {
@@ -283,14 +287,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    private void recursivelyGetFiles(Path from, Path to, List<FileTransferData> fileTransferDataList, FileCopyOption fileCopyOption) {
-        if (allFiles.directoryExists(from.toString())) {
-            Path toSubDirectory = Path.of(to.toString(), from.getFileName().toString());
-            allFiles.di
-        } else if (allFiles.fileExists(from.toString())) {
-        }
-    }
-
     public void getFile(Path from, Path to) {
         if (!lock()) {
             return;
@@ -310,7 +306,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         try {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
-            recursivelyAddFiles(from, to, fileTransferDataList, new FileCopyOption());
+            FileCopyOption fileCopyOption = new FileCopyOption();
+            allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> {
+                Path originalFilePath = fileData.getOriginalFilePath();
+                Path toPath = Path.of(to.toString(), originalFilePath.getParent().toString());
+                addFileForTransfer(originalFilePath, toPath, fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
+            });
             fileTransferManager.transferFiles(fileTransferDataList);
         } finally {
             unlock();
@@ -318,25 +319,43 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public boolean changeFileName(Path path, String newOriginalName) {
-        FileData fileData = allFiles.deleteFile(path.toString());
-        if (fileData == null) {
-            logger.logError("Attempted to rename a file which doesn't has entry.");
+        if (!lock()) {
             return false;
         }
-        allFiles.putFileData(Path.of(path.getParent().toString(), newOriginalName).toString(), fileData);
-        return true;
+        try {
+            FileData fileData = allFiles.deleteFile(path.toString());
+            if (fileData == null) {
+                logger.logError("Attempted to rename a file which doesn't has entry.");
+                return false;
+            }
+            fileData.setOriginalName(newOriginalName);
+            allFiles.putFileData(fileData);
+            return true;
+        } finally {
+            unlock();
+        }
+    }
+
+    private void deleteFile0(FileData fileData) {
+        try {
+            Path maskedFile = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
+            logger.logWarn("Deleting file [" + fileData.getOriginalFilePath() + "] .");
+            if (Files.exists(maskedFile)) {
+                Files.delete(maskedFile);
+            }
+        } catch (Exception e) {
+            logger.logError("Failed to delete file [" + fileData.getOriginalFilePath() + "] : " + e);
+        }
     }
 
     public void deleteFile(Path path) {
         if (!lock()) {
             return;
         }
-        FileData fileData = allFiles.deleteFile(path.toString());
         try {
+            FileData fileData = allFiles.deleteFile(path.toString());
             if (fileData != null) {
-                Path filePath = Path.of(fileStoragePath.toString(), fileData.getMaskedName());
-                logger.logWarn("Deleting file [" + path + "] .");
-                Files.delete(filePath);
+                deleteFile0(fileData);
             }
         } catch (Exception _) {
         } finally {
@@ -352,44 +371,27 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    private void deleteDirectory0(Path filePath) {
-        if (Files.isDirectory(filePath)) {
-            try (Stream<Path> files = Files.list(filePath)) {
-                files.forEach(this::deleteDirectory0);
-                Files.delete(filePath);
-            } catch (Exception e) {
-                logger.logError("Failed to delete directory [" + filePath + "] : " + e);
-            }
-        } else {
-            FileData fileData = allFilesDataMapping.get(filePath);
-            if (fileData != null) {
-                deleteFile0(Path.of(fileStoragePath.toString(), fileData.getOriginalFilePath().toString()));
-            }
-        }
-    }
-
     public void deleteDirectory(Path path) {
         if (!lock()) {
             return;
         }
         try {
-            Path fileToBeDeleted = Path.of(fileStoragePath.toString(), path.toString());
-            if (Files.isDirectory(fileToBeDeleted)) {
-                logger.logWarn("Deleting directory [" + path + "] .");
-                deleteDirectory0(fileToBeDeleted);
-            }
+            allFiles.deleteDirectory(path.toString()).forEach(this::deleteFile0);
         } finally {
             unlock();
         }
     }
 
-    public List<String> getFilesList() {
+    public List<String> getFilesList(Path path) {
         if (!lock()) {
             return null;
         }
-        List<String> fileDataList = new ArrayList<>();
-        allFilesDataMapping.values().stream().map(fileData -> fileData.getOriginalFilePath().toString()).forEach(fileDataList::add);
-        unlock();
+        List<String> fileDataList = new LinkedList<>();
+        try {
+            allFiles.getAllFilesDataList(path.toString()).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
+        } finally {
+            unlock();
+        }
         fileDataList.sort(String::compareTo);
         logger.logInfo("All files list accessed.");
         return fileDataList;
@@ -408,7 +410,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             bufferedOutputStream.write(salt);
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
-            for (FileData data : allFilesDataMapping.values()) {
+            for (FileData data : allFiles.getAllFilesDataList("")) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
             }
@@ -441,8 +443,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 fromFileName = from.getFileName().toString();
             }
             FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
-            allFilesDataMapping.put(to, fileData);
-            allFilesMaskedNameMapping.put(Path.of(fileStoragePath.toString(), fileData.getOriginalFilePath().toString()), to);
+            allFiles.putFileData(fileData);
         }
         logger.logInfo("File [" + from + "] transfer complete.");
     }
@@ -458,69 +459,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
     static class PathTrie {
         static final String pathSeparator = File.separator;
-
-        static class PathTrieNode {
-            String name;
-            ConcurrentMap<String, PathTrieNode> directories = new ConcurrentHashMap<>();
-            ConcurrentMap<String, FileData> filesData = new ConcurrentHashMap<>();
-
-            PathTrieNode(String name) {
-                this.name = name;
-            }
-
-            void rename(String name) {
-                this.name = name;
-            }
-
-            void putFileData(String name, FileData fileData) {
-                filesData.put(name, fileData);
-            }
-
-            FileData getFileData(String name) {
-                return filesData.get(name);
-            }
-
-            boolean fileDataExists(String name) {
-                return filesData.containsKey(name);
-            }
-
-            FileData deleteFileData(String name) {
-                return filesData.remove(name);
-            }
-
-            Set<String> getFilesList() {
-                return filesData.keySet();
-            }
-
-            PathTrieNode putDirectory(String name) {
-                PathTrieNode pathTrieNode = directories.get(name);
-                if (pathTrieNode == null) {
-                    directories.put(name, pathTrieNode = new PathTrieNode(name));
-                }
-                return pathTrieNode;
-            }
-
-            PathTrieNode getDirectory(String name) {
-                return directories.get(name);
-            }
-
-            boolean isDirectory(String name) {
-                return directories.containsKey(name);
-            }
-
-            void deleteDirectory(String name) {
-                directories.remove(name);
-            }
-
-            Set<String> getDirectoriesList() {
-                return directories.keySet();
-            }
-
-            boolean isEmpty() {
-                return directories.isEmpty() && filesData.isEmpty();
-            }
-        }
-
         PathTrieNode root = new PathTrieNode("");
 
         String[] splitPath(String path) {
@@ -547,31 +485,11 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return current;
         }
 
-        FileData deleteRecursively(String[] paths, int i, PathTrieNode current, boolean file) {
-            if (i == paths.length - 1) {
-                if (file) {
-                    return current.deleteFileData(paths[i]);
-                } else {
-                    current.deleteDirectory(paths[i]);
-                }
-                return null;
-            }
-            PathTrieNode next = current.getDirectory(paths[i]);
-            if (next == null) {
-                return null;
-            }
-            FileData fileData = deleteRecursively(paths, i + 1, next, file);
-            if (next.isEmpty()) {
-                current.deleteDirectory(paths[i]);
-            }
-            return fileData;
-        }
-
-        void putFileData(String path, FileData fileData) {
-            String[] subPaths = splitPath(path);
-            int n = subPaths.length;
-            PathTrieNode lastDirectory = makeDirectories0(subPaths, 0, n - 2);
-            lastDirectory.putFileData(subPaths[n - 1], fileData);
+        void putFileData(FileData fileData) {
+            String[] subPaths = splitPath(fileData.getOriginalFilePath().toString());
+            int n = subPaths.length - 1;
+            PathTrieNode lastDirectory = makeDirectories0(subPaths, 0, n - 1);
+            lastDirectory.putFileData(subPaths[n], fileData);
         }
 
         FileData getFileData(String path) {
@@ -586,36 +504,39 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
         FileData deleteFile(String path) {
             String[] paths = splitPath(path);
-            return deleteRecursively(paths, 0, root, true);
+            int n = paths.length - 1;
+            PathTrieNode last = getLastDirectory0(paths, 0, n - 1);
+            if (last == null) {
+                return null;
+            }
+            return last.deleteFileData(paths[n]);
+        }
+
+        List<FileData> deleteDirectory(String path) {
+            String[] paths = splitPath(path);
+            List<FileData> allFilesData = new LinkedList<>();
+            PathTrieNode last = getLastDirectory0(paths, 0, paths.length - 1);
+            if (last != null) {
+                last.deleteSelf(allFilesData);
+            }
+            return allFilesData;
         }
 
         boolean fileExists(String path) {
             String[] paths = splitPath(path);
-            int n = paths.length;
-            PathTrieNode lastDirectory = getLastDirectory0(paths, 0, n - 2);
-            return lastDirectory != null && lastDirectory.fileDataExists(paths[n - 1]);
+            int n = paths.length - 1;
+            PathTrieNode lastDirectory = getLastDirectory0(paths, 0, n - 1);
+            return lastDirectory != null && lastDirectory.fileDataExists(paths[n]);
         }
 
-        void traverseFilesRecursively0(String[] paths, int i, String originalPath, PathTrieNode current, Set<String> files) {
-            if (i == paths.length - 1) {
-                current.getFilesList().forEach(x -> files.add(appendPath(originalPath, x)));
-                return;
-            }
-            PathTrieNode next = current.getDirectory(paths[i]);
-            if (next == null) {
-                return;
-            }
-            traverseFilesRecursively0(paths, i + 1, originalPath, next, files);
-        }
-
-        Set<String> getFilesList(String path) {
+        List<FileData> getAllFilesDataList(String path) {
             String[] paths = splitPath(path);
-            Set<String> files = new LinkedHashSet<>();
-            traverseFilesRecursively0(paths, 0, path, root, files);
-            return files;
-        }
-
-        Set<String> directoryList() {
+            List<FileData> allFilesData = new LinkedList<>();
+            PathTrieNode last = getLastDirectory0(paths, 0, paths.length - 1);
+            if (last != null) {
+                last.getFilesListRecursively(allFilesData);
+            }
+            return allFilesData;
         }
 
         boolean directoryExists(String path) {
@@ -623,6 +544,73 @@ public class FileManager implements FileTransferManagerListener, Writable {
             int n = paths.length - 1;
             PathTrieNode last = getLastDirectory0(paths, 0, n - 1);
             return last != null && last.isDirectory(paths[n]);
+        }
+
+        static class PathTrieNode {
+            String name;
+            ConcurrentMap<String, PathTrieNode> directories = new ConcurrentHashMap<>();
+            ConcurrentMap<String, FileData> filesData = new ConcurrentHashMap<>();
+
+            PathTrieNode(String name) {
+                this.name = name;
+            }
+
+            void renameSelf(String newName) {
+                name = newName;
+            }
+
+            void putFileData(String name, FileData fileData) {
+                filesData.put(name, fileData);
+            }
+
+            FileData getFileData(String name) {
+                return filesData.get(name);
+            }
+
+            boolean fileDataExists(String name) {
+                return filesData.containsKey(name);
+            }
+
+            FileData deleteFileData(String name) {
+                return filesData.remove(name);
+            }
+
+            PathTrieNode putDirectory(String name) {
+                PathTrieNode pathTrieNode = directories.get(name);
+                if (pathTrieNode == null) {
+                    directories.put(name, pathTrieNode = new PathTrieNode(name));
+                }
+                return pathTrieNode;
+            }
+
+            PathTrieNode getDirectory(String name) {
+                return directories.get(name);
+            }
+
+            boolean isDirectory(String name) {
+                return directories.containsKey(name);
+            }
+
+            void getFilesListRecursively(List<FileData> files) {
+                files.addAll(filesData.values());
+                for (PathTrieNode subPaths : directories.values()) {
+                    subPaths.getFilesListRecursively(files);
+                }
+            }
+
+            void deleteSelf(List<FileData> deletedFileData) {
+                getFilesListRecursively(deletedFileData);
+                directories.clear();
+                filesData.clear();
+            }
+
+            void deleteDirectory(String name) {
+                directories.remove(name);
+            }
+
+            boolean isEmpty() {
+                return directories.isEmpty() && filesData.isEmpty();
+            }
         }
     }
 
