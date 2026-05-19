@@ -16,6 +16,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -27,6 +28,8 @@ import java.util.concurrent.Semaphore;
 import java.util.stream.Stream;
 
 public class FileManager implements FileTransferManagerListener, Writable {
+    private static final String FORBIDDEN_FILE_NAME = "(?i:(CON|PRN|AUX|NUL|((COM|LPT)\\d*)))(\\..*)?";
+    private static final String ALLOWED_FILE_NAME = "[a-zA-Z0-9\\s._\\-$#@]+";
     private static final String FILE_SEPARATOR = File.separator;
     private static final String FILE_STORAGE_FOLDER_NAME = "files";
     private static final String FILE_DATA_NAME = "files.data";
@@ -68,9 +71,10 @@ public class FileManager implements FileTransferManagerListener, Writable {
             String fileData = new String(cipherInputStream.readAllBytes());
             cipherInputStream.close();
             String[] data = fileData.split("\n");
+            String oldFileSeparator = data[0];
             int n = data.length;
-            for (int i = 2; i < n; i += 3) {
-                String path = data[i - 2];
+            for (int i = 3; i < n; i += 3) {
+                String path = changeFileSeparator(data[i - 2], oldFileSeparator);
                 String maskedName = data[i - 1];
                 String originalName = data[i];
                 if (path.equals(FILE_DATA_END_MARKER) || maskedName.equals(FILE_DATA_END_MARKER) || originalName.equals(FILE_DATA_END_MARKER)) {
@@ -81,16 +85,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 if (!file.exists()) {
                     logger.logError("File [" + path + "] has entry but doesn't exist, skipping it.");
                 } else {
-                    if (!isValidFileName(maskedName)) {
-                        logger.logError("[" + maskedName + "] is not a valid file name, skipping it.");
-                    } else {
-                        if (smaller(lastFileName, maskedName)) {
-                            lastFileName = maskedName;
-                        }
-                        FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
-                        allFiles.putFileData(currentFileData);
-                        filesCount++;
+                    if (smaller(lastFileName, maskedName)) {
+                        lastFileName = maskedName;
                     }
+                    FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
+                    allFiles.putFileData(currentFileData);
+                    filesCount++;
                 }
             }
             logger.logInfo("Total [" + filesCount + "] file entries scanned.");
@@ -107,6 +107,13 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
+    private String changeFileSeparator(String path, String oldFileSeparator) {
+        if (oldFileSeparator.equals(FILE_SEPARATOR)) {
+            return path;
+        }
+        return path.replace(oldFileSeparator, FILE_SEPARATOR);
+    }
+
     private boolean smaller(String first, String second) {
         int n1 = first.length();
         int n2 = second.length();
@@ -114,10 +121,65 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     private Path removeParent(Path childPath, Path parentPath) {
-        String child = childPath.toString();
-        String parent = parentPath.toString();
-        String removed = child.substring(child.indexOf(parent) + parent.length());
-        return Path.of(FILE_SEPARATOR, removed);
+        return Path.of(FILE_SEPARATOR, parentPath.normalize().relativize(childPath.normalize()).toString());
+    }
+
+    private boolean isForbiddenFileName(String name) {
+        return name.matches(FORBIDDEN_FILE_NAME);
+    }
+
+    private boolean isFileNameAllowed(String name) {
+        return !isForbiddenFileName(name) && name.matches(ALLOWED_FILE_NAME);
+    }
+
+    private boolean validPath(Path path) {
+        for (Path subPath : path) {
+            if (!isFileNameAllowed(subPath.toString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private Path normalizeAndValidatePath(Path path) throws InvalidPathException {
+        path = path.normalize();
+        if (!validPath(path)) {
+            throw new InvalidPathException(path.toString(), "Path must not contain forbidden file names and characters except [a-z], [A-Z], [0-9], [ ], [.], [_], [-], [$], [#], [@] .");
+        }
+        return Path.of(FILE_SEPARATOR, path.toString());
+    }
+
+    private String sanitizeFileName(String fileName) {
+        if (isForbiddenFileName(fileName)) {
+            return "_" + fileName + "_";
+        }
+        if (fileName.matches(ALLOWED_FILE_NAME)) {
+            return fileName;
+        }
+        int n = fileName.length();
+        char[] sanitizedFileName = fileName.toCharArray();
+        for (int j = 0; j < n; j++) {
+            if (!String.valueOf(fileName.charAt(j)).matches(ALLOWED_FILE_NAME)) {
+                sanitizedFileName[j] = '_';
+            }
+        }
+        return new String(sanitizedFileName);
+    }
+
+    private Path sanitizePath(Path originalPath) {
+        if (validPath(originalPath)) {
+            return originalPath;
+        }
+        String[] paths = originalPath.toString().split(FILE_SEPARATOR);
+        int n = paths.length;
+        for (int i = 0; i < n; i++) {
+            paths[i] = sanitizeFileName(paths[i]);
+        }
+        Path sanitizedPath = Path.of(paths[0]);
+        for (int i = 1; i < n; i++) {
+            sanitizedPath = sanitizedPath.resolve(paths[i]);
+        }
+        return sanitizedPath;
     }
 
     private void incrementNextFileName() {
@@ -154,17 +216,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
         lock.release();
     }
 
-    private boolean isValidFileName(String name) {
-        int n = name.length();
-        for (int i = 0; i < n; i++) {
-            char x = name.charAt(i);
-            if (x < '0' || x > '9') {
-                return false;
-            }
-        }
-        return true;
-    }
-
     private boolean fileExists(Path filePath, FileTransferMode mode) {
         if (mode == FileTransferMode.ENCRYPT) {
             return allFiles.fileExists(filePath.toString());
@@ -199,14 +250,19 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         Map<String, String> notes = Map.of();
         Path toFilePath;
-        Path targetFilePath = Path.of(to.toString(), from.getFileName().toString());
+        Path targetFilePath;
+        if (fileTransferMode == FileTransferMode.ENCRYPT) {
+            targetFilePath = sanitizePath(Path.of(to.toString(), from.getFileName().toString()));
+        } else {
+            targetFilePath = Path.of(to.toString(), from.getFileName().toString());
+        }
         if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.fileExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.isRegularFile(targetFilePath))) {
             FileCopyOption.Type fileCopyType = fileCopyOption.getType();
             if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
-                String renamedName = renameFile(targetFilePath, fileTransferMode).getFileName().toString();
+                String renamedName = sanitizeFileName(renameFile(targetFilePath, fileTransferMode).getFileName().toString());
                 if (fileTransferMode == FileTransferMode.ENCRYPT) {
                     notes = Map.of("renamed", renamedName);
-                    toFilePath = Path.of(fileStoragePath.toString(), to.toString(), getNewMaskedFileName());
+                    toFilePath = Path.of(fileStoragePath.toString(), targetFilePath.getParent().toString(), getNewMaskedFileName());
                 } else {
                     toFilePath = Path.of(to.toString(), renamedName);
                 }
@@ -230,7 +286,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             }
         } else {
             if (fileTransferMode == FileTransferMode.ENCRYPT) {
-                toFilePath = Path.of(fileStoragePath.toString(), to.toString(), getNewMaskedFileName());
+                toFilePath = Path.of(fileStoragePath.toString(), sanitizePath(to).toString(), getNewMaskedFileName());
             } else {
                 toFilePath = Path.of(to.toString(), from.getFileName().toString());
             }
@@ -263,7 +319,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
-        to = Path.of(FILE_SEPARATOR, to.toString());
+        to = normalizeAndValidatePath(to);
         if (!lock()) {
             return;
         }
@@ -280,7 +336,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.exists(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
-        to = Path.of(FILE_SEPARATOR, to.toString());
+        to = normalizeAndValidatePath(to);
         if (!lock()) {
             return;
         }
@@ -294,7 +350,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getFile(Path from, Path to) {
-        from = Path.of(FILE_SEPARATOR, from.toString());
+        from = normalizeAndValidatePath(from);
         if (!lock()) {
             return;
         }
@@ -308,7 +364,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getDirectory(Path from, Path to) {
-        from = Path.of(FILE_SEPARATOR, from.toString());
+        from = normalizeAndValidatePath(from);
         if (!lock()) {
             return;
         }
@@ -325,7 +381,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public boolean changeFileName(Path path, String newOriginalName) {
-        path = Path.of(FILE_SEPARATOR, path.toString());
+        path = normalizeAndValidatePath(path);
         if (!lock()) {
             return false;
         }
@@ -356,7 +412,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteFile(Path path) {
-        path = Path.of(FILE_SEPARATOR, path.toString());
+        path = normalizeAndValidatePath(path);
         if (!lock()) {
             return;
         }
@@ -371,6 +427,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void makeDirectory(Path path) {
+        path = normalizeAndValidatePath(path);
         try {
             Path directory = Path.of(fileStoragePath.toString(), path.toString());
             Files.createDirectories(directory);
@@ -379,7 +436,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteDirectory(Path path) {
-        path = Path.of(FILE_SEPARATOR, path.toString());
+        path = normalizeAndValidatePath(path);
         if (!lock()) {
             return;
         }
@@ -391,7 +448,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public List<String> getFilesList(Path path) {
-        path = Path.of(FILE_SEPARATOR, path.toString());
+        path = normalizeAndValidatePath(path);
         List<String> fileDataList = new LinkedList<>();
         if (!lock()) {
             return null;
@@ -419,6 +476,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             bufferedOutputStream.write(salt);
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
+            cipherOutputStream.write((FILE_SEPARATOR + "\n").getBytes());
             for (FileData data : allFiles.getAllFilesDataList(FILE_SEPARATOR)) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
@@ -482,7 +540,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
 
         String appendPath(String first, String second) {
-            return Path.of(first, SEPARATOR, second).toString();
+            return Path.of(first, second).toString();
         }
 
         PathTrieNode getLastDirectory0(String[] path, int s, int e) {
