@@ -167,6 +167,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     private Path sanitizePath(Path originalPath) {
+        originalPath = Path.of(FILE_SEPARATOR, originalPath.normalize().toString());
         if (validPath(originalPath)) {
             return originalPath;
         }
@@ -298,7 +299,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             }
             from = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
         }
-        FileTransferData fileTransferData = new FileTransferData(from, toFilePath, fileTransferMode, notes);
+        FileTransferData fileTransferData = new FileTransferData(from.normalize(), toFilePath.normalize(), fileTransferMode, notes);
         fileTransferDataList.add(fileTransferData);
     }
 
@@ -316,7 +317,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void addFile(Path from, Path to) throws FileNotFoundException {
-        if (!Files.exists(from)) {
+        from = from.normalize();
+        if (!Files.isRegularFile(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
         to = normalizeAndValidatePath(to);
@@ -335,7 +337,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void addDirectory(Path from, Path to) throws FileNotFoundException {
-        if (!Files.exists(from)) {
+        from = from.normalize();
+        if (!Files.isDirectory(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
         to = normalizeAndValidatePath(to);
@@ -355,6 +358,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
     public void getFile(Path from, Path to) {
         from = normalizeAndValidatePath(from);
+        to = to.normalize();
         if (!lock()) {
             return;
         }
@@ -371,6 +375,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
     public void getDirectory(Path from, Path to) {
         from = normalizeAndValidatePath(from);
+        String normalizedTo = to.normalize().toString();
         if (!lock()) {
             return;
         }
@@ -378,7 +383,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
             allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> {
-                addFileForTransfer(fileData.getOriginalFilePath(), Path.of(to.toString(), fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
+                addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
             });
             fileTransferManager.transferFiles(fileTransferDataList);
         } catch (Exception e) {

@@ -284,8 +284,7 @@ public class Main implements FileManagerUpdateListener {
                                 }
                             }
                         }
-                        case GET_FILES_LIST ->
-                                vault.getFilesList(Path.of(IO.readln("Enter the path: "))).forEach(IO::println);
+                        case GET_FILES_LIST -> IO.println(vault.getFilesList(Path.of(IO.readln("Enter the path: "))));
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));
                             String newName = IO.readln("Enter the new name: ");
