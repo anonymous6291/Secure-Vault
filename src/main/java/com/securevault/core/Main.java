@@ -69,7 +69,7 @@ enum OutputType {
 }
 
 public class Main implements FileManagerUpdateListener {
-    private static final Map<String, UsageCommand> COMMANDS = new LinkedHashMap<>();
+    private static final Map<String, CommandType> COMMANDS = new LinkedHashMap<>();
     private static final String DEPENDENT_MODE_ARGUMENT = "-d";
     private static final String EXIT_COMMAND = "EXIT";
     private static final int ITERATIONS = 100000;
@@ -88,40 +88,40 @@ public class Main implements FileManagerUpdateListener {
 
     static {
         jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        COMMANDS.put("v", UsageCommand.VERSION);
-        COMMANDS.put("cp", UsageCommand.CHANGE_PASSWORD);
-        COMMANDS.put("sd", UsageCommand.SELF_DESTRUCT);
-        COMMANDS.put("ld", UsageCommand.LOCKDOWN);
-        COMMANDS.put("ssd", UsageCommand.SET_SELF_DESTRUCT);
-        COMMANDS.put("gsdt", UsageCommand.GET_SELF_DESTRUCT_TRIES);
-        COMMANDS.put("dsd", UsageCommand.DISABLE_SELF_DESTRUCT);
-        COMMANDS.put("isde", UsageCommand.IS_SELF_DESTRUCT_ENABLED);
-        COMMANDS.put("pf", UsageCommand.PUT_FILE);
-        COMMANDS.put("pd", UsageCommand.PUT_DIRECTORY);
-        COMMANDS.put("gf", UsageCommand.GET_FILE);
-        COMMANDS.put("gd", UsageCommand.GET_DIRECTORY);
-        COMMANDS.put("gfl", UsageCommand.GET_FILES_LIST);
-        COMMANDS.put("cfn", UsageCommand.CHANGE_FILE_NAME);
-        COMMANDS.put("df", UsageCommand.DELETE_FILE);
-        COMMANDS.put("md", UsageCommand.MAKE_DIRECTORY);
-        COMMANDS.put("dd", UsageCommand.DELETE_DIRECTORY);
-        COMMANDS.put("aaft", UsageCommand.ABORT_ALL_FILE_TRANSFERS);
-        COMMANDS.put("pp", UsageCommand.PUT_PASSWORD);
-        COMMANDS.put("gp", UsageCommand.GET_PASSWORD);
-        COMMANDS.put("dp", UsageCommand.DELETE_PASSWORD);
-        COMMANDS.put("sp", UsageCommand.SEARCH_PASSWORD);
-        COMMANDS.put("dap", UsageCommand.DELETE_ALL_PASSWORDS);
-        COMMANDS.put("pak", UsageCommand.PUT_API_KEY);
-        COMMANDS.put("gak", UsageCommand.GET_API_KEY);
-        COMMANDS.put("dak", UsageCommand.DELETE_API_KEY);
-        COMMANDS.put("sak", UsageCommand.SEARCH_API_KEY);
-        COMMANDS.put("daak", UsageCommand.DELETE_ALL_API_KEYS);
-        COMMANDS.put("gnopft", UsageCommand.GET_NUMBER_OF_PENDING_FILE_TRANSFERS);
-        COMMANDS.put("gnofft", UsageCommand.GET_NUMBER_OF_FAILED_FILE_TRANSFERS);
-        COMMANDS.put("gfftl", UsageCommand.GET_FAILED_FILE_TRANSFERS_LIST);
-        COMMANDS.put("gftp", UsageCommand.GET_FILE_TRANSFER_PROGRESS);
-        COMMANDS.put("gl", UsageCommand.GET_LOGS);
-        COMMANDS.put("cl", UsageCommand.CLEAR_LOGS);
+        COMMANDS.put("v", CommandType.VERSION);
+        COMMANDS.put("cp", CommandType.CHANGE_PASSWORD);
+        COMMANDS.put("sd", CommandType.SELF_DESTRUCT);
+        COMMANDS.put("ld", CommandType.LOCKDOWN);
+        COMMANDS.put("ssd", CommandType.SET_SELF_DESTRUCT);
+        COMMANDS.put("gsdt", CommandType.GET_SELF_DESTRUCT_TRIES);
+        COMMANDS.put("dsd", CommandType.DISABLE_SELF_DESTRUCT);
+        COMMANDS.put("isde", CommandType.IS_SELF_DESTRUCT_ENABLED);
+        COMMANDS.put("pf", CommandType.PUT_FILE);
+        COMMANDS.put("pd", CommandType.PUT_DIRECTORY);
+        COMMANDS.put("gf", CommandType.GET_FILE);
+        COMMANDS.put("gd", CommandType.GET_DIRECTORY);
+        COMMANDS.put("gfl", CommandType.GET_FILES_LIST);
+        COMMANDS.put("cfn", CommandType.CHANGE_FILE_NAME);
+        COMMANDS.put("df", CommandType.DELETE_FILE);
+        COMMANDS.put("md", CommandType.MAKE_DIRECTORY);
+        COMMANDS.put("dd", CommandType.DELETE_DIRECTORY);
+        COMMANDS.put("aaft", CommandType.ABORT_ALL_FILE_TRANSFERS);
+        COMMANDS.put("pp", CommandType.PUT_PASSWORD);
+        COMMANDS.put("gp", CommandType.GET_PASSWORD);
+        COMMANDS.put("dp", CommandType.DELETE_PASSWORD);
+        COMMANDS.put("sp", CommandType.SEARCH_PASSWORD);
+        COMMANDS.put("dap", CommandType.DELETE_ALL_PASSWORDS);
+        COMMANDS.put("pak", CommandType.PUT_API_KEY);
+        COMMANDS.put("gak", CommandType.GET_API_KEY);
+        COMMANDS.put("dak", CommandType.DELETE_API_KEY);
+        COMMANDS.put("sak", CommandType.SEARCH_API_KEY);
+        COMMANDS.put("daak", CommandType.DELETE_ALL_API_KEYS);
+        COMMANDS.put("gnopft", CommandType.GET_NUMBER_OF_PENDING_FILE_TRANSFERS);
+        COMMANDS.put("gnofft", CommandType.GET_NUMBER_OF_FAILED_FILE_TRANSFERS);
+        COMMANDS.put("gfftl", CommandType.GET_FAILED_FILE_TRANSFERS_LIST);
+        COMMANDS.put("gftp", CommandType.GET_FILE_TRANSFER_PROGRESS);
+        COMMANDS.put("gl", CommandType.GET_LOG);
+        COMMANDS.put("cl", CommandType.CLEAR_LOGS);
     }
 
     static void main(String[] args) {
@@ -161,7 +161,7 @@ public class Main implements FileManagerUpdateListener {
         }
     }
 
-    private static boolean confirmAction(UsageCommand usageCommand) {
+    private static boolean confirmAction(CommandType usageCommand) {
         String reply = IO.readln("Do you really want to execute [" + usageCommand + "] ? [Y|N] ?");
         return reply.matches("[yY]");
     }
@@ -203,7 +203,7 @@ public class Main implements FileManagerUpdateListener {
         while (!(option = IO.readln("Enter the option or [" + EXIT_COMMAND + "] to exit: ")).equals(EXIT_COMMAND)) {
             IO.println();
             try {
-                UsageCommand usageCommand = COMMANDS.get(option);
+                CommandType usageCommand = COMMANDS.get(option);
                 if (usageCommand == null) {
                     printUsageList();
                 } else {
@@ -266,7 +266,7 @@ public class Main implements FileManagerUpdateListener {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                if (usageCommand == UsageCommand.PUT_FILE) {
+                                if (usageCommand == CommandType.PUT_FILE) {
                                     vault.putFile(from, to);
                                 } else {
                                     vault.putDirectory(from, to);
@@ -277,7 +277,7 @@ public class Main implements FileManagerUpdateListener {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                if (usageCommand == UsageCommand.GET_FILE) {
+                                if (usageCommand == CommandType.GET_FILE) {
                                     vault.getFile(from, to);
                                 } else {
                                     vault.getDirectory(from, to);
@@ -370,7 +370,7 @@ public class Main implements FileManagerUpdateListener {
                         case GET_FAILED_FILE_TRANSFERS_LIST ->
                                 IO.println(fileTransferMonitor.getFailedFileTransfersList());
                         case GET_FILE_TRANSFER_PROGRESS -> IO.println(fileTransferMonitor.getFileTransferProgress());
-                        case GET_LOGS -> {
+                        case GET_LOG -> {
                             try {
                                 int number = Integer.parseInt(IO.readln("Enter the number of last logs lines you want to see: "));
                                 IO.println(logger.getLogs(number));
@@ -711,43 +711,6 @@ public class Main implements FileManagerUpdateListener {
     @Override
     public void newUpdate(String update) {
         sendOutput(new Output(OutputType.UPDATE, 0, List.of(update)));
-    }
-
-    enum UsageCommand {
-        VERSION,
-        CHANGE_PASSWORD,
-        SELF_DESTRUCT,
-        LOCKDOWN,
-        SET_SELF_DESTRUCT,
-        GET_SELF_DESTRUCT_TRIES,
-        DISABLE_SELF_DESTRUCT,
-        IS_SELF_DESTRUCT_ENABLED,
-        PUT_FILE,
-        PUT_DIRECTORY,
-        GET_FILE,
-        GET_DIRECTORY,
-        GET_FILES_LIST,
-        CHANGE_FILE_NAME,
-        DELETE_FILE,
-        MAKE_DIRECTORY,
-        DELETE_DIRECTORY,
-        ABORT_ALL_FILE_TRANSFERS,
-        PUT_PASSWORD,
-        GET_PASSWORD,
-        DELETE_PASSWORD,
-        SEARCH_PASSWORD,
-        DELETE_ALL_PASSWORDS,
-        PUT_API_KEY,
-        GET_API_KEY,
-        DELETE_API_KEY,
-        SEARCH_API_KEY,
-        DELETE_ALL_API_KEYS,
-        GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
-        GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
-        GET_FAILED_FILE_TRANSFERS_LIST,
-        GET_FILE_TRANSFER_PROGRESS,
-        GET_LOGS,
-        CLEAR_LOGS,
     }
 }
 
