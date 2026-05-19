@@ -142,7 +142,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     private Path normalizeAndValidatePath(Path path) throws InvalidPathException {
-        path = path.normalize();
+        path = Path.of(FILE_SEPARATOR, path.normalize().toString());
         if (!validPath(path)) {
             throw new InvalidPathException(path.toString(), "Path must not contain forbidden file names and characters except [a-z], [A-Z], [0-9], [ ], [.], [_], [-], [$], [#], [@] .");
         }
@@ -327,6 +327,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             addFileForTransfer(from, to, fileTransferDataList, FileTransferMode.ENCRYPT, new FileCopyOption());
             fileTransferManager.transferFiles(fileTransferDataList);
+        } catch (Exception e) {
+            logger.logError("Error occurred inside addFile of FileManager : " + e);
         } finally {
             unlock();
         }
@@ -344,6 +346,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             recursivelyAddFiles(from, to, fileTransferDataList, new FileCopyOption());
             fileTransferManager.transferFiles(fileTransferDataList);
+        } catch (Exception e) {
+            logger.logError("Error occurred inside addFile of FileManager : " + e);
         } finally {
             unlock();
         }
@@ -358,6 +362,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             addFileForTransfer(from, to, fileTransferDataList, FileTransferMode.DECRYPT, new FileCopyOption());
             fileTransferManager.transferFiles(fileTransferDataList);
+        } catch (Exception e) {
+            logger.logError("Error occurred inside addFile of FileManager : " + e);
         } finally {
             unlock();
         }
@@ -375,6 +381,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 addFileForTransfer(fileData.getOriginalFilePath(), Path.of(to.toString(), fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
             });
             fileTransferManager.transferFiles(fileTransferDataList);
+        } catch (Exception e) {
+            logger.logError("Error occurred inside addFile of FileManager : " + e);
         } finally {
             unlock();
         }
@@ -421,6 +429,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             if (fileData != null) {
                 deleteFile0(fileData);
             }
+        } catch (Exception e) {
+            logger.logError("Error occurred inside addFile of FileManager : " + e);
         } finally {
             unlock();
         }
@@ -435,6 +445,19 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
+    private void deleteEmptyDirectories(Path path) {
+        if (!Files.isDirectory(path)) {
+            return;
+        }
+        try (Stream<Path> subPaths = Files.list(path)) {
+            subPaths.forEach(this::deleteEmptyDirectories);
+            if (!path.equals(fileStoragePath)) {
+                Files.delete(path);
+            }
+        } catch (Exception _) {
+        }
+    }
+
     public void deleteDirectory(Path path) {
         path = normalizeAndValidatePath(path);
         if (!lock()) {
@@ -442,6 +465,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         try {
             allFiles.deleteDirectory(path.toString()).forEach(this::deleteFile0);
+            deleteEmptyDirectories(Path.of(fileStoragePath.toString(), path.toString()));
         } finally {
             unlock();
         }
@@ -507,7 +531,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             if (fileTransferData.notes().containsKey("renamed")) {
                 fromFileName = fileTransferData.notes().get("renamed");
             } else {
-                fromFileName = from.getFileName().toString();
+                fromFileName = sanitizeFileName(from.getFileName().toString());
             }
             FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
             allFiles.putFileData(fileData);
@@ -569,6 +593,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
         FileData getFileData(String path) {
             String[] paths = splitPath(path);
             int n = paths.length - 1;
+            if (n < 0) {
+                return null;
+            }
             PathTrieNode lastDirectory = getLastDirectory0(paths, 0, n - 1);
             if (lastDirectory == null) {
                 return null;
@@ -579,6 +606,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
         FileData deleteFile(String path) {
             String[] paths = splitPath(path);
             int n = paths.length - 1;
+            if (n < 0) {
+                return null;
+            }
             PathTrieNode last = getLastDirectory0(paths, 0, n - 1);
             if (last == null) {
                 return null;
@@ -599,6 +629,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
         boolean fileExists(String path) {
             String[] paths = splitPath(path);
             int n = paths.length - 1;
+            if (n < 0) {
+                return false;
+            }
             PathTrieNode lastDirectory = getLastDirectory0(paths, 0, n - 1);
             return lastDirectory != null && lastDirectory.fileDataExists(paths[n]);
         }

@@ -17,8 +17,6 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
 
 public class FileTransferManager implements FileTransferMonitor {
     private static final int MAX_PARALLEL_FILE_TRANSFERS = Runtime.getRuntime().availableProcessors() / 2;
@@ -46,40 +44,12 @@ public class FileTransferManager implements FileTransferMonitor {
         shutdown = false;
     }
 
-    private void startSingleFileTransfer(FileTransferHandler fileTransferHandler) {
-        if (!abortAllFileTransfers) {
-            Future<FileTransferStatus> result = executorService.submit(fileTransferHandler);
-            long last = 0;
-            while (!result.isDone()) {
-                if (abortAllFileTransfers) {
-                    fileTransferHandler.abortTransfer();
-                    break;
-                }
-                long current = fileTransferHandler.getDataTransferred();
-                dataTransferred.addAndGet(current - last);
-                last = current;
-                try {
-                    Thread.sleep(DELAY);
-                } catch (Exception _) {
-                }
-            }
-            try {
-                FileTransferStatus fileTransferStatus = result.get();
-                if (fileTransferStatus == FileTransferStatus.FAILED) {
-                    logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
-                    failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
-                    fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
-                } else if (fileTransferStatus == FileTransferStatus.COMPLETED) {
-                    fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
-                }
-            } catch (Exception _) {
-            }
-            dataTransferred.addAndGet(-last);
+
+    public void start() {
+        if (isShutdown()) {
+            return;
         }
-        dataToBeTransferred.addAndGet(-fileTransferHandler.getDataToBeTransferred());
-        numberOfPendingFiles.decrementAndGet();
-        numberOfRunningFileTransfers.decrementAndGet();
-        fileTransferLock.release();
+        Thread.startVirtualThread(this::start0);
     }
 
     private void start0() {
@@ -121,11 +91,39 @@ public class FileTransferManager implements FileTransferMonitor {
         }
     }
 
-    public void start() {
-        if (isShutdown()) {
-            return;
+    private void startSingleFileTransfer(FileTransferHandler fileTransferHandler) {
+        if (!abortAllFileTransfers) {
+            Future<FileTransferStatus> result = executorService.submit(fileTransferHandler);
+            long last = 0;
+            while (!result.isDone()) {
+                if (abortAllFileTransfers) {
+                    fileTransferHandler.abortTransfer();
+                    break;
+                }
+                long current = fileTransferHandler.getDataTransferred();
+                dataTransferred.addAndGet(current - last);
+                last = current;
+                try {
+                    Thread.sleep(DELAY);
+                } catch (Exception _) {
+                }
+            }
+            dataTransferred.addAndGet(fileTransferHandler.getDataToBeTransferred() - last);
+            try {
+                FileTransferStatus fileTransferStatus = result.get();
+                if (fileTransferStatus == FileTransferStatus.FAILED) {
+                    logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                    failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                    fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
+                } else if (fileTransferStatus == FileTransferStatus.COMPLETED) {
+                    fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
+                }
+            } catch (Exception _) {
+            }
         }
-        Thread.startVirtualThread(this::start0);
+        numberOfPendingFiles.decrementAndGet();
+        numberOfRunningFileTransfers.decrementAndGet();
+        fileTransferLock.release();
     }
 
     private boolean acquireUniversalLock() {
@@ -157,6 +155,7 @@ public class FileTransferManager implements FileTransferMonitor {
                 dataToBeTransferred.addAndGet(fileTransferHandler.getDataToBeTransferred());
                 numberOfPendingFiles.incrementAndGet();
             } catch (Exception e) {
+                logger.logError("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer.");
                 failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer.");
             }
         });
@@ -226,7 +225,7 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     class FileTransferHandler implements Callable<FileTransferStatus> {
-        private static final int CHUNK_SIZE = 1024 * 1024;
+        private static final int CHUNK_SIZE = 2 * 1024 * 1024;
         private final FileTransferData fileTransferData;
         private final Path from;
         private final Path to;
@@ -262,8 +261,7 @@ public class FileTransferManager implements FileTransferMonitor {
                     byte[] salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
                     bufferedOutputStream.write(iv);
                     bufferedOutputStream.write(salt);
-                    CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));
-                    outputStream = new GZIPOutputStream(cipherOutputStream);
+                    outputStream = new CipherOutputStream(bufferedOutputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));
                     inputStream = bufferedInputStream;
                 } else {
                     int ivLength = ConfigurationDefaults.IV_LENGTH;
@@ -273,8 +271,7 @@ public class FileTransferManager implements FileTransferMonitor {
                     if (!(bufferedInputStream.read(iv) == ivLength && bufferedInputStream.read(salt) == saltLength)) {
                         throw new RuntimeException("Corrupted file [" + from + "] .");
                     }
-                    CipherInputStream cipherInputStream = new CipherInputStream(bufferedInputStream, CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE));
-                    inputStream = new GZIPInputStream(cipherInputStream);
+                    inputStream = new CipherInputStream(bufferedInputStream, CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE));
                     outputStream = bufferedOutputStream;
                 }
                 byte[] chunk = new byte[CHUNK_SIZE];
