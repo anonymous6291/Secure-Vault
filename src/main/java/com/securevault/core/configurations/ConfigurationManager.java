@@ -34,12 +34,12 @@ public class ConfigurationManager implements Writable {
 
     public ConfigurationManager(Path config, boolean create, char[] key) throws Exception {
         configurationPath = config;
-        ConfigurationDefaults.Data configurationManagerData = ConfigurationDefaults.getDefault(ConfigurationManager.class);
+        ConfigurationDefaults.Data configurationManagerData = ConfigurationDefaults.getConfigurationManagerData();
         if (create) {
-            byte[] generatedChar = RandomValueGenerator.generateSecureBytes(KEY_LENGTH);
+            byte[] generatedChar = SecureRandomValueGenerator.generateSecureBytes(KEY_LENGTH);
             vaultKey = base64Encoder.encodeToString(generatedChar).toCharArray();
-            byte[] iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
-            byte[] salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+            byte[] iv = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
+            byte[] salt = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
             Cipher cipher = CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE);
             byte[] encr = cipher.doFinal(generatedChar);
             configuration = new Configuration(VERSION, false, new Date(), 0, false, false, 0, base64Encoder.encodeToString(encr), base64Encoder.encodeToString(iv), base64Encoder.encodeToString(salt));
@@ -48,7 +48,6 @@ public class ConfigurationManager implements Writable {
             Cipher cipher = CipherManager.getCipher(configurationManagerData.key(), configurationManagerData.iv(), configurationManagerData.salt(), Cipher.DECRYPT_MODE);
             String configString = new String(cipher.doFinal(configData), StandardCharsets.UTF_16);
             configuration = json.readValue(configString, Configuration.class);
-            IO.println(configString);
             if (configuration.getIs_destructed()) {
                 throw new VaultDestructedException();
             }
@@ -67,7 +66,7 @@ public class ConfigurationManager implements Writable {
             } catch (AEADBadTagException e) {
                 int tries = configuration.getTries() + 1;
                 if (configuration.getSelf_destruct() && configuration.getSelf_destruct_limit() <= tries) {
-                    String modifiedKey = base64Encoder.encodeToString(RandomValueGenerator.generateSecureBytes(configuration.getKey().length()));
+                    String modifiedKey = base64Encoder.encodeToString(SecureRandomValueGenerator.generateSecureBytes(configuration.getKey().length()));
                     configuration.setKey(modifiedKey);
                     configuration.setIs_destructed(true);
                     configuration.setSelf_destruct(false);
@@ -133,7 +132,7 @@ public class ConfigurationManager implements Writable {
             return;
         }
         configuration.setIs_destructed(true);
-        configuration.setKey(base64Encoder.encodeToString(RandomValueGenerator.generateSecureBytes(configuration.getKey().length())));
+        configuration.setKey(base64Encoder.encodeToString(SecureRandomValueGenerator.generateSecureBytes(configuration.getKey().length())));
         unlock();
     }
 
@@ -175,7 +174,7 @@ public class ConfigurationManager implements Writable {
     public void writeData() throws Exception {
         lock();
         try {
-            ConfigurationDefaults.Data defaultConfigurationManagerData = ConfigurationDefaults.getDefault(ConfigurationManager.class);
+            ConfigurationDefaults.Data defaultConfigurationManagerData = ConfigurationDefaults.getConfigurationManagerData();
             String configData = json.writeValueAsString(configuration);
             byte[] data = configData.getBytes(StandardCharsets.UTF_16);
             Cipher cipher = CipherManager.getCipher(defaultConfigurationManagerData.key(), defaultConfigurationManagerData.iv(), defaultConfigurationManagerData.salt(), Cipher.ENCRYPT_MODE);

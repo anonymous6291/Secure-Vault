@@ -3,7 +3,7 @@ package com.securevault.core.filehandlers;
 import com.securevault.core.Logger;
 import com.securevault.core.configurations.CipherManager;
 import com.securevault.core.configurations.ConfigurationDefaults;
-import com.securevault.core.configurations.RandomValueGenerator;
+import com.securevault.core.configurations.SecureRandomValueGenerator;
 import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 
 import javax.crypto.Cipher;
@@ -217,7 +217,7 @@ public class FileTransferManager implements FileTransferMonitor {
         if (data == 0) {
             return 100;
         }
-        return (dataTransferred.get() * 100.0) / data;
+        return ((int) ((dataTransferred.get() * 100_00.0) / data)) / 100.0;
     }
 
     enum FileTransferStatus {
@@ -257,8 +257,8 @@ public class FileTransferManager implements FileTransferMonitor {
                 InputStream inputStream;
                 OutputStream outputStream;
                 if (mode == FileTransferMode.ENCRYPT) {
-                    byte[] iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
-                    byte[] salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+                    byte[] iv = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
+                    byte[] salt = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
                     bufferedOutputStream.write(iv);
                     bufferedOutputStream.write(salt);
                     outputStream = new CipherOutputStream(bufferedOutputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));

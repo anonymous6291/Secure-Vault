@@ -24,6 +24,7 @@ enum CommandType {
     OPEN,
     IS_OPEN,
     CLOSE,
+    RESPONSE,
     VERSION,
     CHANGE_PASSWORD,
     SELF_DESTRUCT,
@@ -52,7 +53,6 @@ enum CommandType {
     DELETE_API_KEY,
     SEARCH_API_KEY,
     DELETE_ALL_API_KEYS,
-    RESPONSE,
     GET_NUMBER_OF_PENDING_FILE_TRANSFERS,
     GET_NUMBER_OF_FAILED_FILE_TRANSFERS,
     GET_FAILED_FILE_TRANSFERS_LIST,
@@ -65,13 +65,17 @@ enum OutputType {
     ERROR,
     INVALID_COMMAND,
     RESPONSE,
+    QUERY,
     UPDATE,
 }
 
 public class Main implements FileManagerUpdateListener {
     private static final Map<String, CommandType> COMMANDS = new LinkedHashMap<>();
     private static final String DEPENDENT_MODE_ARGUMENT = "-d";
-    private static final String EXIT_COMMAND = "EXIT";
+    private static final String VAULT_PATH_ARGUMENT = "-p";
+    private static final String EXIT_COMMAND = "e|exit";
+    private static final String EXIT_COMMAND_REGEX = "(?i:(exit|e))";
+    private static final String CONFIRM_REGEX = "(?i:(yes))|(?i:(y))";
     private static final int ITERATIONS = 100000;
     private static final int KEY_LENGTH = 256;
     private static final int TAG_SIZE = 128;
@@ -137,21 +141,61 @@ public class Main implements FileManagerUpdateListener {
         if (dependentMode) {
             dependentMode();
         } else {
-            independentMode();
+            independentMode(args);
         }
     }
 
-    private static void independentMode() {
+    private static String readConfidentialString() {
+        Console console = System.console();
+        if (console == null) {
+            return IO.readln();
+        }
+        return new String(console.readPassword());
+    }
+
+    private static void independentMode(String[] args) {
         try {
-            String path = System.getProperty("user.dir");
-            boolean create = false;
-            String password = "WORLD";
-            //path = IO.readln("Enter the vault path: ");
-            //create = Boolean.parseBoolean(IO.readln("You want to create the vault? "));
-            //password = IO.readln("Enter the password: ");
+            int n = args.length, i = 0;
+            String path = null; // System.getProperty("user.dir");
+            boolean create = true;
+            String password; // = "WORLD";
+            while (i < n) {
+                if (args[i] != null) {
+                    if (args[i].equals(VAULT_PATH_ARGUMENT)) {
+                        if (i + 1 < n) {
+                            path = args[i + 1];
+                            create = false;
+                            i++;
+                        }
+                    } else {
+                        IO.println("Invalid argument [" + args[i] + "] .");
+                        return;
+                    }
+                }
+                i++;
+            }
+            if (path == null) {
+                path = IO.readln("Enter the vault path: ");
+                create = IO.readln("You want to create the vault, [yes|no] ?").matches(CONFIRM_REGEX);
+            }
+            IO.println("Enter the password:");
+            password = readConfidentialString();
+            if (create) {
+                IO.println("Renter the password:");
+                if (!password.equals(readConfidentialString())) {
+                    IO.println("Password didn't match.");
+                    return;
+                }
+            }
             independentModeVaultStart(path, create, password.toCharArray());
         } catch (Exception e) {
-            IO.println("Exception occurred while opening the vault: " + e);
+            IO.println("Exception occurred in Secret Vault: " + e);
+            if (vault != null) {
+                try {
+                    vault.closeVault();
+                } catch (Exception _) {
+                }
+            }
         }
     }
 
@@ -162,16 +206,8 @@ public class Main implements FileManagerUpdateListener {
     }
 
     private static boolean confirmAction(CommandType usageCommand) {
-        String reply = IO.readln("Do you really want to execute [" + usageCommand + "] ? [Y|N] ?");
-        return reply.matches("[yY]");
-    }
-
-    private static String readConfidentialString() {
-        Console console = System.console();
-        if (console == null) {
-            return IO.readln();
-        }
-        return new String(console.readPassword());
+        String reply = IO.readln("Do you really want to execute [" + usageCommand + "] , [yes|no] ?");
+        return reply.matches(CONFIRM_REGEX);
     }
 
     private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
@@ -183,10 +219,14 @@ public class Main implements FileManagerUpdateListener {
 
             @Override
             public int askForResponse(String query, List<String> options) {
-                String printQuery = query + "\nOptions (enter 0th based index of the option):\n" + options;
+                IO.println(query + "Options:");
+                int i = 1;
+                for (String option : options) {
+                    IO.println(i++ + ") " + option);
+                }
                 while (true) {
                     try {
-                        return Integer.parseInt(IO.readln(printQuery));
+                        return Integer.parseInt(IO.readln("Enter the option number: ")) - 1;
                     } catch (Exception _) {
                     }
                 }
@@ -200,7 +240,7 @@ public class Main implements FileManagerUpdateListener {
         printUsageList();
         Logger logger = vault.getLogger();
         String option;
-        while (!(option = IO.readln("Enter the option or [" + EXIT_COMMAND + "] to exit: ")).equals(EXIT_COMMAND)) {
+        while (!(option = IO.readln("Enter the option or [" + EXIT_COMMAND + "] to exit: ")).matches(EXIT_COMMAND_REGEX)) {
             IO.println();
             try {
                 CommandType usageCommand = COMMANDS.get(option);
@@ -284,7 +324,11 @@ public class Main implements FileManagerUpdateListener {
                                 }
                             }
                         }
-                        case GET_FILES_LIST -> IO.println(vault.getFilesList(Path.of(IO.readln("Enter the path: "))));
+                        case GET_FILES_LIST -> {
+                            Path path1 = Path.of(IO.readln("Enter the path: "));
+                            IO.println("Files:");
+                            vault.getFilesList(path1).forEach(System.out::println);
+                        }
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));
                             String newName = IO.readln("Enter the new name: ");
@@ -369,7 +413,8 @@ public class Main implements FileManagerUpdateListener {
                                 IO.println(fileTransferMonitor.getNumberOfFailedFileTransfers());
                         case GET_FAILED_FILE_TRANSFERS_LIST ->
                                 IO.println(fileTransferMonitor.getFailedFileTransfersList());
-                        case GET_FILE_TRANSFER_PROGRESS -> IO.println(fileTransferMonitor.getFileTransferProgress());
+                        case GET_FILE_TRANSFER_PROGRESS ->
+                                IO.println(fileTransferMonitor.getFileTransferProgress() + "%");
                         case GET_LOG -> {
                             try {
                                 int number = Integer.parseInt(IO.readln("Enter the number of last logs lines you want to see: "));
@@ -395,8 +440,8 @@ public class Main implements FileManagerUpdateListener {
 
     private static void dependentMode() {
         char[] password = IO.readln().toCharArray();
-        byte[] iv = decoder.decode(IO.readln());
         byte[] salt = decoder.decode(IO.readln());
+        byte[] iv = decoder.decode(IO.readln());
         try {
             initHandles(password, iv, salt);
         } catch (Exception e) {
@@ -697,13 +742,14 @@ public class Main implements FileManagerUpdateListener {
         list.add(query);
         list.addAll(options);
         ResponseHandler responseHandler = registerResponseHandler(id);
-        sendOutput(new Output(OutputType.RESPONSE, -1, list));
+        sendOutput(new Output(OutputType.QUERY, -1, list));
         String response = responseHandler.getResponse();
-        int n = options.size();
-        for (int i = 0; i < n; i++) {
-            if (options.get(i).equals(response)) {
+        int i = 0;
+        for (String option : options) {
+            if (option.equals(response)) {
                 return i;
             }
+            i++;
         }
         return 0;
     }

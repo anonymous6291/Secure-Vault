@@ -2,13 +2,12 @@ package com.securevault.core;
 
 import com.securevault.core.configurations.CipherManager;
 import com.securevault.core.configurations.ConfigurationDefaults;
+import com.securevault.core.configurations.SecureRandomValueGenerator;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -18,45 +17,53 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 
 public class Logger {
-    private static final ConfigurationDefaults.Data configurations = ConfigurationDefaults.getDefault(Logger.class);
+    private static final String ENCRYPTED_LOG_FILE_NAME = "log.data";
+    private static final String DECRYPTED_LOG_FILE_NAME = "log.data1";
     private final Semaphore lock = new Semaphore(1, true);
     private final Path encryptedLogFile;
     private final Path decryptedLogFile;
     private final char[] encryptionKey;
+    private final byte[] salt;
+    private final byte[] iv;
     private BufferedOutputStream logFileWriter;
 
-    public Logger(Path encryptedLogFile, Path decryptedLogFile, char[] key) {
-        if (!lock()) {
-            throw new RuntimeException("Initialization of Logger failed.");
-        }
+    public Logger(Path logPath, char[] key, boolean create) {
+        encryptedLogFile = Path.of(logPath.toString(), ENCRYPTED_LOG_FILE_NAME);
+        decryptedLogFile = Path.of(logPath.toString(), DECRYPTED_LOG_FILE_NAME);
         try {
-            if (Files.isRegularFile(encryptedLogFile)) {
-                try (CipherInputStream cipherInputStream = new CipherInputStream(Files.newInputStream(encryptedLogFile), CipherManager.getCipher(key, configurations.iv(), configurations.salt(), Cipher.DECRYPT_MODE)); BufferedOutputStream fileOutputStream = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile))) {
+            int saltLength = ConfigurationDefaults.SALT_LENGTH;
+            int ivLength = ConfigurationDefaults.IV_LENGTH;
+            if (!create && Files.isRegularFile(encryptedLogFile)) {
+                try (InputStream inputStream = Files.newInputStream(encryptedLogFile); BufferedOutputStream fileOutputStream = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile))) {
+                    iv = inputStream.readNBytes(ivLength);
+                    salt = inputStream.readNBytes(saltLength);
+                    Cipher cipher = CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE);
+                    CipherInputStream cipherInputStream = new CipherInputStream(inputStream, cipher);
                     cipherInputStream.transferTo(fileOutputStream);
                 } catch (Exception e) {
                     IO.println("Exception occurred while reading log : " + e);
+                    throw e;
                 }
+            } else {
+                salt = SecureRandomValueGenerator.generateSecureBytes(saltLength);
+                iv = SecureRandomValueGenerator.generateSecureBytes(ivLength);
             }
             if (!Files.exists(decryptedLogFile)) {
                 Files.createFile(decryptedLogFile);
             }
             logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile, StandardOpenOption.APPEND));
-            this.encryptedLogFile = encryptedLogFile;
-            this.decryptedLogFile = decryptedLogFile;
             encryptionKey = key;
         } catch (Exception e) {
             throw new RuntimeException("Initialization of Logger failed : " + e);
-        } finally {
-            unlock();
         }
     }
 
-    private boolean lock() {
+    private boolean notLocked() {
         try {
             lock.acquire();
-            return true;
-        } catch (InterruptedException e) {
             return false;
+        } catch (InterruptedException e) {
+            return true;
         }
     }
 
@@ -150,8 +157,11 @@ public class Logger {
 
     private void close0() throws Exception {
         logFileWriter.close();
-        Cipher cipher = CipherManager.getCipher(encryptionKey, configurations.iv(), configurations.salt(), Cipher.ENCRYPT_MODE);
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(Files.newOutputStream(encryptedLogFile), cipher);
+        OutputStream outputStream = Files.newOutputStream(encryptedLogFile);
+        outputStream.write(iv);
+        outputStream.write(salt);
+        Cipher cipher = CipherManager.getCipher(encryptionKey, iv, salt, Cipher.ENCRYPT_MODE);
+        CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher);
         BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decryptedLogFile));
         bufferedInputStream.transferTo(cipherOutputStream);
         cipherOutputStream.close();
@@ -160,9 +170,7 @@ public class Logger {
     }
 
     public void close() {
-        if (!lock()) {
-            throw new RuntimeException("Unable to gain lock while closing the Logger.");
-        }
+        notLocked();
         try {
             close0();
         } catch (Exception e) {

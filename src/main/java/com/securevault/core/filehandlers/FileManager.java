@@ -4,7 +4,7 @@ import com.securevault.core.Logger;
 import com.securevault.core.Writable;
 import com.securevault.core.configurations.CipherManager;
 import com.securevault.core.configurations.ConfigurationDefaults;
-import com.securevault.core.configurations.RandomValueGenerator;
+import com.securevault.core.configurations.SecureRandomValueGenerator;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
 import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 
@@ -18,10 +18,7 @@ import java.io.FileNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
@@ -46,57 +43,59 @@ public class FileManager implements FileTransferManagerListener, Writable {
     private final Logger logger;
     private volatile char[] nextMaskedFileName;
 
-    public FileManager(Path basePath, char[] vaultKey, FileManagerUpdateListener fileManagerUpdateListener, Logger logger) throws Exception {
+    public FileManager(Path basePath, char[] vaultKey, boolean create, FileManagerUpdateListener fileManagerUpdateListener, Logger logger) throws Exception {
         this.logger = logger;
         fileDataPath = Path.of(basePath.toString(), FILE_DATA_NAME);
         fileStoragePath = Path.of(basePath.toString(), FILE_STORAGE_FOLDER_NAME);
-        if (!Files.isRegularFile(fileDataPath)) {
-            Files.createFile(fileDataPath);
-        }
-        if (!Files.isDirectory(fileStoragePath)) {
-            Files.createDirectories(fileStoragePath);
-        }
         this.vaultKey = vaultKey;
         this.fileManagerUpdateListener = fileManagerUpdateListener;
-        File dataFile = fileDataPath.toFile();
         String lastFileName = "0";
         logger.logInfo("FileManager started.");
         int filesCount = 0;
-        if (dataFile.length() > 0) {
-            BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(fileDataPath));
-            iv = bufferedInputStream.readNBytes(ConfigurationDefaults.IV_LENGTH);
-            salt = bufferedInputStream.readNBytes(ConfigurationDefaults.SALT_LENGTH);
-            Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.DECRYPT_MODE);
-            CipherInputStream cipherInputStream = new CipherInputStream(bufferedInputStream, cipher);
-            String fileData = new String(cipherInputStream.readAllBytes());
-            cipherInputStream.close();
-            String[] data = fileData.split("\n");
-            String oldFileSeparator = data[0];
-            int n = data.length;
-            for (int i = 3; i < n; i += 3) {
-                String path = changeFileSeparator(data[i - 2], oldFileSeparator);
-                String maskedName = data[i - 1];
-                String originalName = data[i];
-                if (path.equals(FILE_DATA_END_MARKER) || maskedName.equals(FILE_DATA_END_MARKER) || originalName.equals(FILE_DATA_END_MARKER)) {
-                    break;
-                }
-                Path maskedFilePath = Path.of(fileStoragePath.toString(), path, maskedName);
-                File file = maskedFilePath.toFile();
-                if (!file.exists()) {
-                    logger.logError("File [" + path + "] has entry but doesn't exist, skipping it.");
-                } else {
-                    if (smaller(lastFileName, maskedName)) {
-                        lastFileName = maskedName;
+        try {
+            Set<String> maskedFileEntries = new HashSet<>();
+            if (!create && Files.isRegularFile(fileDataPath)) {
+                BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(fileDataPath));
+                iv = bufferedInputStream.readNBytes(ConfigurationDefaults.IV_LENGTH);
+                salt = bufferedInputStream.readNBytes(ConfigurationDefaults.SALT_LENGTH);
+                Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.DECRYPT_MODE);
+                CipherInputStream cipherInputStream = new CipherInputStream(bufferedInputStream, cipher);
+                String fileData = new String(cipherInputStream.readAllBytes());
+                cipherInputStream.close();
+                String[] data = fileData.split("\n");
+                String oldFileSeparator = data[0];
+                int n = data.length;
+                for (int i = 3; i < n; i += 3) {
+                    String path = changeFileSeparator(data[i - 2], oldFileSeparator);
+                    String maskedName = data[i - 1];
+                    String originalName = data[i];
+                    if (path.equals(FILE_DATA_END_MARKER) || maskedName.equals(FILE_DATA_END_MARKER) || originalName.equals(FILE_DATA_END_MARKER)) {
+                        break;
                     }
-                    FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
-                    allFiles.putFileData(currentFileData);
-                    filesCount++;
+                    Path maskedFilePath = Path.of(fileStoragePath.toString(), path, maskedName);
+                    File file = maskedFilePath.toFile();
+                    if (!file.exists()) {
+                        logger.logError("File [" + path + "] has entry but doesn't exist, skipping it.");
+                    } else {
+                        if (smaller(lastFileName, maskedName)) {
+                            lastFileName = maskedName;
+                        }
+                        maskedFileEntries.add(maskedFilePath.toString());
+                        FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
+                        allFiles.putFileData(currentFileData);
+                        filesCount++;
+                    }
                 }
+                logger.logInfo("Total [" + filesCount + "] file entries scanned.");
+            } else {
+                iv = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
+                salt = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+                Files.createFile(fileDataPath);
+                Files.createDirectories(fileStoragePath);
             }
-            logger.logInfo("Total [" + filesCount + "] file entries scanned.");
-        } else {
-            iv = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
-            salt = RandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
+            removeFilesWithNoEntry(fileStoragePath, maskedFileEntries);
+        } catch (Exception e) {
+            throw new Exception("Exception occurred while starting the FileManager : " + e);
         }
         this.nextMaskedFileName = lastFileName.toCharArray();
         fileTransferManager = new FileTransferManager(vaultKey, this, logger);
@@ -104,6 +103,20 @@ public class FileManager implements FileTransferManagerListener, Writable {
         fileManagerUpdateListener.setFileTransferMonitor(fileTransferManager);
         if (filesCount != 0) {
             incrementNextFileName();
+        }
+    }
+
+    private void removeFilesWithNoEntry(Path current, Set<String> maskedFileEntries) {
+        if (Files.isDirectory(current)) {
+            try (Stream<Path> stream = Files.list(current)) {
+                stream.forEach(subPath -> removeFilesWithNoEntry(subPath, maskedFileEntries));
+            } catch (Exception _) {
+            }
+        } else if (Files.isRegularFile(current) && !maskedFileEntries.contains(current.toString())) {
+            try {
+                Files.delete(current);
+            } catch (Exception _) {
+            }
         }
     }
 
@@ -382,9 +395,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         try {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
-            allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> {
-                addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption);
-            });
+            allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
             fileTransferManager.transferFiles(fileTransferDataList);
         } catch (Exception e) {
             logger.logError("Error occurred inside addFile of FileManager : " + e);
@@ -488,7 +499,6 @@ public class FileManager implements FileTransferManagerListener, Writable {
             unlock();
         }
         fileDataList.sort(String::compareTo);
-        logger.logInfo("All files list accessed.");
         return fileDataList;
     }
 

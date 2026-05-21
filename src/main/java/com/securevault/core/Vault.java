@@ -21,8 +21,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Vault {
     private static final String VAULT_FOLDER_NAME = "Secure Vault";
     private static final String CONFIG_FILE_NAME = "config.data";
-    private static final String ENCRYPTED_LOG_FILE_NAME = "log.data";
-    private static final String DECRYPTED_LOG_FILE_NAME = "log.data1";
     private static final int VAULT_KEY_MINIMUM_LENGTH = 5;
     private static final long AUTO_SAVE_DELAY = 2 * 60 * 1000;
     private final AutoSaver autoSaver = new AutoSaver(AUTO_SAVE_DELAY);
@@ -30,7 +28,7 @@ public class Vault {
     private final ConfigurationManager configurationManager;
     private final FileManager fileManager;
     private final PasswordAndAPIKeyManager passwordAndAPIKeyManager;
-    private final String vaultPath;
+    private final Path vaultPath;
     private final Logger logger;
     private final char[] vaultKey;
     private char[] password;
@@ -39,7 +37,7 @@ public class Vault {
     public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener) throws Exception {
         assertVaultKeyRequirement(password);
         this.password = password.clone();
-        Path vaultPath = Paths.get(path, VAULT_FOLDER_NAME);
+        Path vaultPath = Paths.get(path, VAULT_FOLDER_NAME).normalize();
         if (create) {
             if (Files.exists(vaultPath)) {
                 throw new VaultException("Vault already exists.");
@@ -50,23 +48,35 @@ public class Vault {
                 throw new VaultException("Vault doesn't exist.");
             }
         }
-        this.vaultPath = vaultPath.toString();
+        this.vaultPath = vaultPath;
         vaultFileSystem = vaultPath.getFileSystem();
         try {
             configurationManager = new ConfigurationManager(getPath(CONFIG_FILE_NAME), create, password);
         } catch (AEADBadTagException e) {
-            throw new VaultException("Invalid password.");
+            throw new VaultException("Invalid password or corrupted Configuration.");
         }
         vaultKey = configurationManager.getVaultKey();
-        logger = new Logger(getPath(ENCRYPTED_LOG_FILE_NAME), getPath(DECRYPTED_LOG_FILE_NAME), vaultKey);
+        logger = new Logger(getPath(""), vaultKey, create);
         logger.logInfo("Vault opened.");
-        fileManager = new FileManager(getPath(""), vaultKey, fileManagerUpdateListener, logger);
-        passwordAndAPIKeyManager = new PasswordAndAPIKeyManager(getPath(""), vaultKey, logger);
+        try {
+            fileManager = new FileManager(getPath(""), vaultKey, create, fileManagerUpdateListener, logger);
+            passwordAndAPIKeyManager = new PasswordAndAPIKeyManager(getPath(""), vaultKey, create, logger);
+        } catch (Exception e) {
+            logger.logError(e.toString());
+            try {
+                configurationManager.writeData();
+            } catch (Exception _) {
+            }
+            try {
+                logger.close();
+            } catch (Exception _) {
+            }
+            throw e;
+        }
         registerAutoSave(configurationManager);
         registerAutoSave(fileManager);
         registerAutoSave(passwordAndAPIKeyManager);
         autoSaver.start();
-        IO.println(new String(vaultKey));
         isVaultOpen = true;
     }
 
@@ -81,7 +91,7 @@ public class Vault {
     }
 
     private Path getPath(String subPath) {
-        return vaultFileSystem.getPath(vaultPath, subPath);
+        return vaultFileSystem.getPath(vaultPath.toString(), subPath);
     }
 
     private boolean different(char[] x, char[] y) {
@@ -264,7 +274,7 @@ public class Vault {
     }
 
     static class AutoSaver {
-        private final long RECHECK_DELAY = 200;
+        private final long RECHECK_DELAY = 500;
         private final LinkedList<Writable> autosave = new LinkedList<>();
         private final Semaphore lock = new Semaphore(1, true);
         private final long delay;
@@ -278,6 +288,13 @@ public class Vault {
         void start() {
             Thread.startVirtualThread(() -> {
                 while (!shutdown.get()) {
+                    long value = System.currentTimeMillis() + delay;
+                    while (System.currentTimeMillis() < value && !shutdown.get()) {
+                        try {
+                            Thread.sleep(RECHECK_DELAY);
+                        } catch (Exception _) {
+                        }
+                    }
                     if (lock()) {
                         for (Writable writable : autosave) {
                             try {
@@ -286,13 +303,6 @@ public class Vault {
                             }
                         }
                         unlock();
-                    }
-                    long value = System.currentTimeMillis() + delay;
-                    while (System.currentTimeMillis() < value && !shutdown.get()) {
-                        try {
-                            Thread.sleep(RECHECK_DELAY);
-                        } catch (Exception _) {
-                        }
                     }
                 }
                 isShutdown.set(true);
