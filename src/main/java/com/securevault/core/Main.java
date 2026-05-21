@@ -176,12 +176,12 @@ public class Main implements FileManagerUpdateListener {
             }
             if (path == null) {
                 path = IO.readln("Enter the vault path: ");
-                create = IO.readln("You want to create the vault, [yes|no] ?").matches(CONFIRM_REGEX);
+                create = IO.readln("You want to create the vault, [yes|no] ? ").matches(CONFIRM_REGEX);
             }
-            IO.println("Enter the password:");
+            IO.println("Enter the password: ");
             password = readConfidentialString();
             if (create) {
-                IO.println("Renter the password:");
+                IO.println("Renter the password: ");
                 if (!password.equals(readConfidentialString())) {
                     IO.println("Password didn't match.");
                     return;
