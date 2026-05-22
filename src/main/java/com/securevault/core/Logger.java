@@ -22,14 +22,16 @@ public class Logger {
     private final Semaphore lock = new Semaphore(1, true);
     private final Path encryptedLogFile;
     private final Path decryptedLogFile;
+    private final boolean printLogToIO;
     private final char[] encryptionKey;
     private final byte[] salt;
     private final byte[] iv;
     private BufferedOutputStream logFileWriter;
 
-    public Logger(Path logPath, char[] key, boolean create) {
+    public Logger(Path logPath, char[] key, boolean create, boolean printLogToIO) {
         encryptedLogFile = Path.of(logPath.toString(), ENCRYPTED_LOG_FILE_NAME);
         decryptedLogFile = Path.of(logPath.toString(), DECRYPTED_LOG_FILE_NAME);
+        this.printLogToIO = printLogToIO;
         try {
             int saltLength = ConfigurationDefaults.SALT_LENGTH;
             int ivLength = ConfigurationDefaults.IV_LENGTH;
@@ -41,8 +43,7 @@ public class Logger {
                     CipherInputStream cipherInputStream = new CipherInputStream(inputStream, cipher);
                     cipherInputStream.transferTo(fileOutputStream);
                 } catch (Exception e) {
-                    IO.println("Exception occurred while reading log : " + e.getMessage());
-                    throw e;
+                    throw new Exception("Exception occurred while reading log : " + e.getMessage());
                 }
             } else {
                 salt = SecureRandomValueGenerator.generateSecureBytes(saltLength);
@@ -91,7 +92,9 @@ public class Logger {
         if (notLocked()) {
             return;
         }
-        IO.println("[" + logType + "] : " + message);
+        if (printLogToIO) {
+            IO.println("[" + logType + "] : " + message);
+        }
         try {
             logFileWriter.write((new Date() + " [" + logType + "] : " + message + "\n").getBytes());
             logFileWriter.flush();

@@ -34,7 +34,7 @@ public class Vault {
     private char[] password;
     private volatile boolean isVaultOpen;
 
-    public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener) throws Exception {
+    public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener, boolean independentMode) throws Exception {
         assertVaultKeyRequirement(password);
         this.password = password.clone();
         Path vaultPath = Paths.get(path, VAULT_FOLDER_NAME).normalize();
@@ -56,7 +56,7 @@ public class Vault {
             throw new VaultException("Invalid password or corrupted Configuration.");
         }
         vaultKey = configurationManager.getVaultKey();
-        logger = new Logger(getPath(""), vaultKey, create);
+        logger = new Logger(getPath(""), vaultKey, create, independentMode);
         logger.logInfo("Vault opened.");
         try {
             fileManager = new FileManager(getPath(""), vaultKey, create, fileManagerUpdateListener, logger);

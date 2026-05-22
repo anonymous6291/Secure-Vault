@@ -236,7 +236,7 @@ public class Main implements FileManagerUpdateListener {
             public void newUpdate(String update) {
                 IO.println("Update:\n" + update);
             }
-        });
+        }, true);
         printUsageList();
         Logger logger = vault.getLogger();
         String option;
@@ -507,7 +507,7 @@ public class Main implements FileManagerUpdateListener {
                     boolean create = Boolean.parseBoolean(args.get(1));
                     char[] password = args.get(2).toCharArray();
                     try {
-                        vault = new Vault(path, create, password, new Main());
+                        vault = new Vault(path, create, password, new Main(), false);
                         sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault opened.")));
                     } catch (Exception e) {
                         sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of(e.getMessage())));
