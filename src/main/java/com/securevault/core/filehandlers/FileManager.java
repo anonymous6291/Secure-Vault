@@ -546,8 +546,10 @@ public class FileManager implements FileTransferManagerListener, Writable {
             }
             FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
             allFiles.putFileData(fileData);
+            logger.logInfo("File [" + from + "] added.");
+        } else {
+            logger.logInfo("File [" + from + "] retrieved.");
         }
-        logger.logInfo("File [" + from + "] transfer complete.");
     }
 
     @Override

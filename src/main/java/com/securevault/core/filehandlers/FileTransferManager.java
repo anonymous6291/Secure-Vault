@@ -224,7 +224,7 @@ public class FileTransferManager implements FileTransferMonitor {
         FAILED, PENDING, COMPLETED, ABORTED
     }
 
-    class FileTransferHandler implements Callable<FileTransferStatus> {
+    static class FileTransferHandler implements Callable<FileTransferStatus> {
         private static final int CHUNK_SIZE = 2 * 1024 * 1024;
         private final FileTransferData fileTransferData;
         private final Path from;
@@ -287,11 +287,9 @@ public class FileTransferManager implements FileTransferMonitor {
                     return fileTransferStatus = FileTransferStatus.ABORTED;
                 }
             } catch (Exception e) {
-                logger.logError("Transfer of [" + from + "] to [" + to + "] failed : " + e.getMessage());
                 fileTransferStatus = FileTransferStatus.FAILED;
                 return FileTransferStatus.FAILED;
             }
-            logger.logInfo("Transfer of [" + from + "] to [" + to + "] was successful.");
             return fileTransferStatus = FileTransferStatus.COMPLETED;
         }
 
