@@ -48,14 +48,16 @@ public class PasswordAndAPIKeyManager implements Writable {
             readFromFileToTrie(create, apiKeyDataPath, apiKeys, key, 0);
             readFromFileToTrie(create, passwordDataPath, passwords, key, 1);
         } catch (Exception e) {
-            throw new Exception("Exception occurred while stating the PasswordAndAPIKeyManager : " + e);
+            throw new Exception("Exception occurred while starting the PasswordAndAPIKeyManager : " + e.getMessage());
         }
     }
 
-    private void lock() {
+    private boolean notLocked() {
         try {
             lock.acquire();
+            return false;
         } catch (InterruptedException _) {
+            return true;
         }
     }
 
@@ -97,7 +99,7 @@ public class PasswordAndAPIKeyManager implements Writable {
         salts[index] = SecureRandomValueGenerator.generateSecureBytes(saltLength);
     }
 
-    private void writeTrieToFile(Path filePath, Trie trie, char[] password, int index) {
+    private void writeTrieToFile(Path filePath, Trie trie, char[] password, int index) throws Exception {
         try {
             OutputStream outputStream = Files.newOutputStream(filePath);
             outputStream.write(ivs[index]);
@@ -113,59 +115,155 @@ public class PasswordAndAPIKeyManager implements Writable {
             cipherOutputStream.close();
         } catch (Exception e) {
             logError(e);
+            throw e;
         }
     }
 
     private void logError(Exception e) {
-        logger.logError("Exception occurred inside PasswordAndAPIKeyManager : " + e);
+        logger.logError("Exception occurred inside PasswordAndAPIKeyManager : " + e.getMessage());
     }
 
     public void putPassword(String name, String value) {
-        passwords.putValue(name, value);
+        if (notLocked()) {
+            return;
+        }
+        try {
+            passwords.putValue(name, value);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while adding the password : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public String getPassword(String name) {
-        return passwords.getValue(name);
+        if (notLocked()) {
+            return "";
+        }
+        try {
+            return passwords.getValue(name);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while getting the password : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void deletePassword(String name) {
-        passwords.deleteKey(name);
+        if (notLocked()) {
+            return;
+        }
+        try {
+            passwords.deleteKey(name);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while deleting the password : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public Set<String> searchPassword(String prefix) {
-        return passwords.searchKey(prefix);
+        if (notLocked()) {
+            return Set.of();
+        }
+        try {
+            return passwords.searchKey(prefix);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while searching the password : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void clearAllPasswords() {
-        passwords.clearAll();
+        if (notLocked()) {
+            return;
+        }
+        try {
+            passwords.clearAll();
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while clearing all passwords : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void putAPIKey(String name, String value) {
-        apiKeys.putValue(name, value);
+        if (notLocked()) {
+            return;
+        }
+        try {
+            apiKeys.putValue(name, value);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while adding the APIKey : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public String getAPIKey(String name) {
-        return apiKeys.getValue(name);
+        if (notLocked()) {
+            return "";
+        }
+        try {
+            return apiKeys.getValue(name);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while getting the APIKey : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void deleteAPIKey(String name) {
-        apiKeys.deleteKey(name);
+        if (notLocked()) {
+            return;
+        }
+        try {
+            apiKeys.deleteKey(name);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while deleting the APIKey : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public Set<String> searchAPIKey(String prefix) {
-        return apiKeys.searchKey(prefix);
+        if (notLocked()) {
+            return Set.of();
+        }
+        try {
+            return apiKeys.searchKey(prefix);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while searching the APIKey : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void clearAllAPIKeys() {
-        apiKeys.clearAll();
+        if (notLocked()) {
+            return;
+        }
+        try {
+            apiKeys.clearAll();
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while clearing all APIKeys : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     @Override
     public void writeData() {
-        lock();
-        writeTrieToFile(apiKeyDataPath, apiKeys, key, 0);
-        writeTrieToFile(passwordDataPath, passwords, key, 1);
-        unlock();
+        notLocked();
+        try {
+            writeTrieToFile(apiKeyDataPath, apiKeys, key, 0);
+            writeTrieToFile(passwordDataPath, passwords, key, 1);
+        } catch (Exception e) {
+            throw new RuntimeException("Exception occurred while writing the data of PasswordAndAPIKey : " + e.getMessage());
+        } finally {
+            unlock();
+        }
     }
 
     public void close() {
@@ -180,54 +278,25 @@ public class PasswordAndAPIKeyManager implements Writable {
 
     static class Trie {
         private final TrieNode root = new TrieNode();
-        private final Semaphore lock = new Semaphore(1, true);
-
-        private boolean notLocked() {
-            try {
-                lock.acquire();
-                return false;
-            } catch (InterruptedException e) {
-                return true;
-            }
-        }
-
-        private void unlock() {
-            lock.release();
-        }
 
         void putValue(String name, String value) {
-            if (notLocked()) {
-                return;
+            TrieNode current = root;
+            for (char c : name.toCharArray()) {
+                current = current.getOrMakeChild(c);
             }
-            try {
-                TrieNode current = root;
-                for (char c : name.toCharArray()) {
-                    current = current.getOrMakeChild(c);
-                }
-                current.setKey(name);
-                current.setValue(value);
-            } finally {
-                unlock();
-            }
+            current.setKey(name);
+            current.setValue(value);
         }
 
         String getValue(String name) {
-            if (notLocked()) {
-                return null;
-            }
             TrieNode current = root;
-            try {
-                for (char c : name.toCharArray()) {
-                    current = current.getChild(c);
-                    if (current == null) {
-                        unlock();
-                        return "";
-                    }
+            for (char c : name.toCharArray()) {
+                current = current.getChild(c);
+                if (current == null) {
+                    return "";
                 }
-                return current.getValue();
-            } finally {
-                unlock();
             }
+            return current.getValue();
         }
 
         private void recursiveDelete(TrieNode node, String name, int index) {
@@ -246,14 +315,7 @@ public class PasswordAndAPIKeyManager implements Writable {
             if (name.isEmpty()) {
                 return;
             }
-            if (notLocked()) {
-                return;
-            }
-            try {
-                recursiveDelete(root, name, 0);
-            } finally {
-                unlock();
-            }
+            recursiveDelete(root, name, 0);
         }
 
         private void recursiveKeySearch(TrieNode node, Set<String> result) {
@@ -266,24 +328,16 @@ public class PasswordAndAPIKeyManager implements Writable {
         }
 
         Set<String> searchKey(String prefix) {
-            if (notLocked()) {
-                return Set.of();
-            }
-            try {
-                Set<String> result = new LinkedHashSet<>();
-                TrieNode current = root;
-                for (char c : prefix.toCharArray()) {
-                    current = current.getChild(c);
-                    if (current == null) {
-                        unlock();
-                        return result;
-                    }
+            Set<String> result = new LinkedHashSet<>();
+            TrieNode current = root;
+            for (char c : prefix.toCharArray()) {
+                current = current.getChild(c);
+                if (current == null) {
+                    return result;
                 }
-                recursiveKeySearch(current, result);
-                return result;
-            } finally {
-                unlock();
             }
+            recursiveKeySearch(current, result);
+            return result;
         }
 
         private void getAllPairsRecursively(TrieNode node, Map<String, String> allKeys) {
@@ -296,27 +350,13 @@ public class PasswordAndAPIKeyManager implements Writable {
         }
 
         void clearAll() {
-            if (notLocked()) {
-                return;
-            }
-            try {
-                root.clear();
-            } finally {
-                unlock();
-            }
+            root.clear();
         }
 
         Map<String, String> getAllPairs() {
             Map<String, String> keys = new LinkedHashMap<>();
-            if (notLocked()) {
-                return keys;
-            }
-            try {
-                getAllPairsRecursively(root, keys);
-                return keys;
-            } finally {
-                unlock();
-            }
+            getAllPairsRecursively(root, keys);
+            return keys;
         }
 
         static class TrieNode {

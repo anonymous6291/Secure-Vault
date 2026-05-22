@@ -41,7 +41,7 @@ public class Logger {
                     CipherInputStream cipherInputStream = new CipherInputStream(inputStream, cipher);
                     cipherInputStream.transferTo(fileOutputStream);
                 } catch (Exception e) {
-                    IO.println("Exception occurred while reading log : " + e);
+                    IO.println("Exception occurred while reading log : " + e.getMessage());
                     throw e;
                 }
             } else {
@@ -54,7 +54,7 @@ public class Logger {
             logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile, StandardOpenOption.APPEND));
             encryptionKey = key;
         } catch (Exception e) {
-            throw new RuntimeException("Initialization of Logger failed : " + e);
+            throw new RuntimeException("Initialization of Logger failed : " + e.getMessage());
         }
     }
 
@@ -87,19 +87,25 @@ public class Logger {
         log(message, LogType.INFO);
     }
 
-    public synchronized void log(String message, LogType logType) {
+    public void log(String message, LogType logType) {
+        if (notLocked()) {
+            return;
+        }
         IO.println("[" + logType + "] : " + message);
         try {
             logFileWriter.write((new Date() + " [" + logType + "] : " + message + "\n").getBytes());
             logFileWriter.flush();
         } catch (Exception e) {
-            throw new RuntimeException("Exception occurred while writing to the log file : " + e);
+            throw new RuntimeException("Exception occurred while writing to the log file : " + e.getMessage());
         } finally {
             unlock();
         }
     }
 
     public String getLogs(int lastLines) {
+        if (notLocked()) {
+            return "";
+        }
         try {
             logFileWriter.close();
         } catch (Exception e) {
@@ -108,7 +114,7 @@ public class Logger {
             } catch (Exception _) {
             }
             unlock();
-            throw new RuntimeException("Exception occurred in Logger while closing the stream : " + e);
+            throw new RuntimeException("Exception occurred in Logger while closing the stream : " + e.getMessage());
         }
         try (BufferedReader bufferedReader = Files.newBufferedReader(decryptedLogFile)) {
             List<String> logs = new LinkedList<>();
@@ -138,9 +144,14 @@ public class Logger {
     }
 
     public void clearLogs() {
+        if (notLocked()) {
+            return;
+        }
         try {
             logFileWriter.close();
         } catch (Exception _) {
+            unlock();
+            return;
         }
         try {
             logFileWriter = new BufferedOutputStream(Files.newOutputStream(decryptedLogFile));
@@ -149,7 +160,7 @@ public class Logger {
                 close0();
             } catch (Exception _) {
             }
-            throw new RuntimeException("Exception occurred while opening the log file : " + e);
+            throw new RuntimeException("Exception occurred while opening the log file : " + e.getMessage());
         } finally {
             unlock();
         }
@@ -174,7 +185,7 @@ public class Logger {
         try {
             close0();
         } catch (Exception e) {
-            throw new RuntimeException("Exception occurred while writing the encrypted logs : " + e);
+            throw new RuntimeException("Exception occurred while writing the encrypted logs : " + e.getMessage());
         } finally {
             unlock();
         }

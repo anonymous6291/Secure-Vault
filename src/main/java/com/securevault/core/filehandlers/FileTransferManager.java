@@ -155,8 +155,8 @@ public class FileTransferManager implements FileTransferMonitor {
                 dataToBeTransferred.addAndGet(fileTransferHandler.getDataToBeTransferred());
                 numberOfPendingFiles.incrementAndGet();
             } catch (Exception e) {
-                logger.logError("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer.");
-                failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer.");
+                logger.logError("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
+                failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
             }
         });
         releaseUniversalLock();
@@ -287,7 +287,7 @@ public class FileTransferManager implements FileTransferMonitor {
                     return fileTransferStatus = FileTransferStatus.ABORTED;
                 }
             } catch (Exception e) {
-                logger.logError("Transfer of [" + from + "] to [" + to + "] failed. : " + e);
+                logger.logError("Transfer of [" + from + "] to [" + to + "] failed : " + e.getMessage());
                 fileTransferStatus = FileTransferStatus.FAILED;
                 return FileTransferStatus.FAILED;
             }

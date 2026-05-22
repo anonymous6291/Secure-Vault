@@ -62,7 +62,7 @@ public class Vault {
             fileManager = new FileManager(getPath(""), vaultKey, create, fileManagerUpdateListener, logger);
             passwordAndAPIKeyManager = new PasswordAndAPIKeyManager(getPath(""), vaultKey, create, logger);
         } catch (Exception e) {
-            logger.logError(e.toString());
+            logger.logError(e.getMessage());
             try {
                 configurationManager.writeData();
             } catch (Exception _) {
@@ -117,7 +117,7 @@ public class Vault {
         fileManager.addFile(from, to);
     }
 
-    public void putDirectory(Path from, Path to) throws FileNotFoundException {
+    public void putDirectory(Path from, Path to) throws Exception {
         fileManager.addDirectory(from, to);
     }
 
