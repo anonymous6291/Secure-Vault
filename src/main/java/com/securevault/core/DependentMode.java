@@ -33,6 +33,7 @@ enum OutputType {
 
 public class DependentMode implements FileManagerUpdateListener {
     private static final String ERROR_STRING = "ERROR;";
+    private static final String IMMEDIATE_SHUTDOWN = "SHUTDOWN";
     private static final Semaphore lock = new Semaphore(1, true);
     private static final Base64.Encoder base64Encoder = Base64.getEncoder();
     private static final Base64.Decoder base64Decoder = Base64.getDecoder();
@@ -98,6 +99,16 @@ public class DependentMode implements FileManagerUpdateListener {
             while (!shutdown.get()) {
                 try {
                     String data = IO.readln();
+                    if (data.equals(IMMEDIATE_SHUTDOWN)) {
+                        if (vault != null && vault.isVaultOpen()) {
+                            try {
+                                vault.closeVault();
+                            } catch (Exception _) {
+                            }
+                        }
+                        shutdown.set(true);
+                        continue;
+                    }
                     String decryptedData = decryptData(data);
                     Command command = jsonHandler.readValue(decryptedData, Command.class);
                     handleCommand(command);
