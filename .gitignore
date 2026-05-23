@@ -1,4 +1,7 @@
 /Secure Vault/
+/SecureVaultInstaller/
+/package.sh
+/run_installer.sh
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

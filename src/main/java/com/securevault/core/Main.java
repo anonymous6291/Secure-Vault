@@ -17,6 +17,7 @@ import java.security.spec.KeySpec;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -76,15 +77,20 @@ public class Main implements FileManagerUpdateListener {
     private static final String EXIT_COMMAND = "e|exit";
     private static final String EXIT_COMMAND_REGEX = "(?i:(exit|e))";
     private static final String CONFIRM_REGEX = "(?i:(yes))|(?i:(y))";
-    private static final int ITERATIONS = 100000;
-    private static final int KEY_LENGTH = 256;
-    private static final int TAG_SIZE = 128;
+    private static final int ivLength = 12;
+    private static final int iterations = 100000;
+    private static final int keySize = 256;
+    private static final int tagSize = 128;
     private static final ObjectMapper jsonHandler = new ObjectMapper();
     private static final AtomicInteger responseId = new AtomicInteger(0);
     private static final AtomicBoolean shutdown = new AtomicBoolean(false);
     private static final ConcurrentHashMap<Integer, ResponseHandler> responseHandlers = new ConcurrentHashMap<>();
-    private static final Base64.Encoder encoder = Base64.getEncoder();
-    private static final Base64.Decoder decoder = Base64.getDecoder();
+    private static final String OUTPUT_PARTITIONER = ";";
+    private static final Semaphore lock = new Semaphore(1, true);
+    private static final Base64.Encoder base64Encoder = Base64.getEncoder();
+    private static final Base64.Decoder base64Decoder = Base64.getDecoder();
+    private static final byte[] iv = new byte[ivLength];
+    private static SecretKeySpec secretKeySpec;
     private static Cipher encryptCipher;
     private static Cipher decryptCipher;
     private static FileTransferMonitor fileTransferMonitor;
@@ -143,6 +149,17 @@ public class Main implements FileManagerUpdateListener {
         } else {
             independentMode(args);
         }
+    }
+
+    private static void lock() {
+        try {
+            lock.acquire();
+        } catch (Exception _) {
+        }
+    }
+
+    private static void unlock() {
+        lock.release();
     }
 
     private static String readConfidentialString() {
@@ -440,33 +457,29 @@ public class Main implements FileManagerUpdateListener {
 
     private static void dependentMode() {
         char[] password = IO.readln().toCharArray();
-        byte[] salt = decoder.decode(IO.readln());
-        byte[] iv = decoder.decode(IO.readln());
+        byte[] salt = base64Decoder.decode(IO.readln());
+        for (int i = iv.length - 1; i >= 0; i--) {
+            iv[i] = -128;
+        }
         try {
-            initHandles(password, iv, salt);
+            initHandles(password, salt);
         } catch (Exception e) {
             IO.println(e.toString());
         }
     }
 
-    private static Cipher getCipher(char[] password, byte[] iv, byte[] salt, int mode) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+    private static void initHandles(char[] password, byte[] salt) throws Exception {
         SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-        KeySpec keySpec = new PBEKeySpec(password, salt, ITERATIONS, KEY_LENGTH);
+        KeySpec keySpec = new PBEKeySpec(password, salt, iterations, keySize);
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
-        GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(TAG_SIZE, iv);
-        cipher.init(mode, secretKeySpec, gcmParameterSpec);
-        return cipher;
-    }
-
-    private static void initHandles(char[] password, byte[] iv, byte[] salt) throws Exception {
-        encryptCipher = getCipher(password, iv, salt, Cipher.ENCRYPT_MODE);
-        decryptCipher = getCipher(password, iv, salt, Cipher.DECRYPT_MODE);
-        Thread.startVirtualThread(() -> {
+        secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
+        encryptCipher = Cipher.getInstance("AES/GCM/NoPadding");
+        decryptCipher = Cipher.getInstance("AES/GCM/NoPadding");
+        new Thread(() -> {
             while (!shutdown.get()) {
                 try {
                     String data = IO.readln();
+                    IO.println(data);
                     String decryptedData = decryptData(data);
                     Command command = jsonHandler.readValue(decryptedData, Command.class);
                     handleCommand(command);
@@ -474,17 +487,47 @@ public class Main implements FileManagerUpdateListener {
                     sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
                 }
             }
-        });
+        }).start();
+    }
+
+    private static byte[] performCipher(Cipher cipher, int mode, SecretKeySpec secretKeySpec, GCMParameterSpec gcmParameterSpec, byte[] data) throws Exception {
+        cipher.init(mode, secretKeySpec, gcmParameterSpec);
+        return cipher.doFinal(data);
+    }
+
+    private static void incrementIV() {
+        int i = 0;
+        while (iv[i] == 127) {
+            iv[i] = -128;
+            i++;
+        }
+        iv[i]++;
     }
 
     private static String encryptData(String data) throws Exception {
-        byte[] encryptedData = encryptCipher.doFinal(data.getBytes());
-        return encoder.encodeToString(encryptedData);
+        lock();
+        try {
+            incrementIV();
+            String ivBase64 = base64Encoder.encodeToString(iv);
+            GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(tagSize, iv);
+            byte[] encryptedData = performCipher(encryptCipher, Cipher.ENCRYPT_MODE, secretKeySpec, gcmParameterSpec, data.getBytes());
+            return ivBase64 + OUTPUT_PARTITIONER + base64Encoder.encodeToString(encryptedData);
+        } finally {
+            unlock();
+        }
     }
 
     private static String decryptData(String data) throws Exception {
-        byte[] decodedData = decoder.decode(data);
-        return new String(decryptCipher.doFinal(decodedData));
+        lock();
+        try {
+            String[] split = data.split(OUTPUT_PARTITIONER);
+            byte[] iv = base64Decoder.decode(split[0]);
+            byte[] decodedData = base64Decoder.decode(split[1]);
+            GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(tagSize, iv);
+            return new String(performCipher(decryptCipher, Cipher.DECRYPT_MODE, secretKeySpec, gcmParameterSpec, decodedData));
+        } finally {
+            unlock();
+        }
     }
 
     private static boolean validNumberOfArguments(Command command, int numberOfArguments) {
@@ -717,9 +760,11 @@ public class Main implements FileManagerUpdateListener {
     private static synchronized void sendOutput(Output output) {
         try {
             String responseJSON = jsonHandler.writeValueAsString(output);
+            IO.println(responseJSON);
             String encrypted = encryptData(responseJSON);
             IO.println(encrypted);
-        } catch (Exception _) {
+        } catch (Exception y) {
+            IO.println(y);
         }
     }
 
@@ -758,6 +803,9 @@ public class Main implements FileManagerUpdateListener {
     public void newUpdate(String update) {
         sendOutput(new Output(OutputType.UPDATE, 0, List.of(update)));
     }
+}
+
+record IPCSpec() {
 }
 
 record Command(CommandType type, int commandId, List<String> args) {
