@@ -73,6 +73,7 @@ public class Vault {
             }
             throw e;
         }
+        String s = "";
         registerAutoSave(configurationManager);
         registerAutoSave(fileManager);
         registerAutoSave(passwordAndAPIKeyManager);
@@ -286,7 +287,7 @@ public class Vault {
         }
 
         void start() {
-            Thread.startVirtualThread(() -> {
+            new Thread(() -> {
                 while (!shutdown.get()) {
                     long value = System.currentTimeMillis() + delay;
                     while (System.currentTimeMillis() < value && !shutdown.get()) {
@@ -306,7 +307,7 @@ public class Vault {
                     }
                 }
                 isShutdown.set(true);
-            });
+            }).start();
         }
 
         private boolean lock() {

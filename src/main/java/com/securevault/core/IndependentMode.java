@@ -4,10 +4,13 @@ import com.securevault.core.filehandlers.FileTransferMonitor;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
 
 import java.io.Console;
+import java.io.File;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class IndependentMode {
     private static final Map<String, CommandType> COMMANDS = new LinkedHashMap<>();
@@ -15,6 +18,7 @@ public class IndependentMode {
     private static final String EXIT_COMMAND_REGEX = "(?i:(exit|e))";
     private static final String CONFIRM_REGEX = "(?i:(yes))|(?i:(y))";
     private static final String VAULT_PATH_ARGUMENT = "-p";
+    private static final String HIERARCHY_SPACE_PER_DEPTH = "   ";
     private static FileTransferMonitor fileTransferMonitor;
 
     static {
@@ -71,9 +75,9 @@ public class IndependentMode {
     public static void start(String[] args) {
         try {
             int n = args.length, i = 0;
-            String path = null; // System.getProperty("user.dir");
+            String path = null;
             boolean create = true;
-            String password; // = "WORLD";
+            String password;
             while (i < n) {
                 if (args[i] != null) {
                     if (args[i].equals(VAULT_PATH_ARGUMENT)) {
@@ -113,6 +117,47 @@ public class IndependentMode {
         return reply.matches(CONFIRM_REGEX);
     }
 
+    private static void printTrieHierarchy(TrieNode trieNode, boolean root, String print) {
+        if (root) {
+            IO.println(" " + trieNode.name);
+        }
+        Collection<TrieNode> children = trieNode.getChildren();
+        String currentPrint = print + HIERARCHY_SPACE_PER_DEPTH + "|";
+        String lastChildPrint = print + HIERARCHY_SPACE_PER_DEPTH + " ";
+        int i = 1;
+        for (TrieNode child : children) {
+            IO.println(currentPrint);
+            IO.println(currentPrint + "->" + child.name);
+            if (i++ == children.size()) {
+                printTrieHierarchy(child, false, lastChildPrint);
+            } else {
+                printTrieHierarchy(child, false, currentPrint);
+            }
+        }
+    }
+
+    private static void addToTrie(TrieNode trieNode, String value, String split) {
+        String[] values = value.split(split);
+        for (String current : values) {
+            trieNode = trieNode.child.computeIfAbsent(current, _ -> new TrieNode(current));
+        }
+    }
+
+    private static TrieNode convertToTrie(List<String> values, String split) {
+        TrieNode trieNode = new TrieNode("");
+        for (String value : values) {
+            addToTrie(trieNode, value, split);
+        }
+        return trieNode;
+    }
+
+    private static void printFilesList(List<String> filesList) {
+        TrieNode trieNode = convertToTrie(filesList, Pattern.quote(File.separator));
+        for (TrieNode child : trieNode.getChildren()) {
+            printTrieHierarchy(child, true, "");
+        }
+    }
+
     private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
         Vault vault = new Vault(path, create, password, new FileManagerUpdateListener() {
             @Override
@@ -122,7 +167,7 @@ public class IndependentMode {
 
             @Override
             public int askForResponse(String query, List<String> options) {
-                IO.println(query + "Options:");
+                IO.println(query + "\nOptions:");
                 int i = 1;
                 for (String option : options) {
                     IO.println(i++ + ") " + option);
@@ -230,7 +275,7 @@ public class IndependentMode {
                         case GET_FILES_LIST -> {
                             Path path1 = Path.of(IO.readln("Enter the path: "));
                             IO.println("Files:");
-                            vault.getFilesList(path1).forEach(System.out::println);
+                            printFilesList(vault.getFilesList(path1));
                         }
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));
@@ -339,5 +384,19 @@ public class IndependentMode {
             IO.println();
         }
         vault.closeVault();
+    }
+
+    static class TrieNode {
+        Map<String, TrieNode> child;
+        String name;
+
+        TrieNode(String name) {
+            this.name = name;
+            child = new LinkedHashMap<>();
+        }
+
+        Collection<TrieNode> getChildren() {
+            return child.values();
+        }
     }
 }

@@ -175,12 +175,10 @@ public class Logger {
         outputStream.write(iv);
         outputStream.write(salt);
         Cipher cipher = CipherManager.getCipher(encryptionKey, iv, salt, Cipher.ENCRYPT_MODE);
-        CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher);
-        BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decryptedLogFile));
-        bufferedInputStream.transferTo(cipherOutputStream);
-        cipherOutputStream.close();
-        bufferedInputStream.close();
-        Files.delete(decryptedLogFile);
+        try (CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher); BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(decryptedLogFile))) {
+            bufferedInputStream.transferTo(cipherOutputStream);
+            Files.delete(decryptedLogFile);
+        }
     }
 
     public void close() {

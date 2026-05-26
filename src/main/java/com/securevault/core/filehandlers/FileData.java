@@ -31,8 +31,8 @@ public class FileData {
         return fileLength;
     }
 
-    public String getFilePath() {
-        return filePath;
+    public Path getFilePath() {
+        return Path.of(filePath);
     }
 
     public void setFilePath(String filePath) {

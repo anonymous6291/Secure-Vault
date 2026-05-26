@@ -22,18 +22,22 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class FileManager implements FileTransferManagerListener, Writable {
     private static final String FORBIDDEN_FILE_NAME = "(?i:(CON|PRN|AUX|NUL|((COM|LPT)\\d*)))(\\..*)?";
     private static final String ALLOWED_FILE_NAME = "[a-zA-Z0-9\\s._\\-$#@]+";
     private static final String FILE_SEPARATOR = File.separator;
-    private static final String FILE_STORAGE_FOLDER_NAME = "files";
+    private static final String QUOTED_FILE_SEPARATOR = Pattern.quote(FILE_SEPARATOR);
+    private static final String ROOT_DIRECTORY = "root";
+    private static final String FILE_STORAGE_FOLDER_NAME = "";// "files";
     private static final String FILE_DATA_NAME = "files.data";
     private static final String FILE_DATA_END_MARKER = "#############################END#############################";
     private final Semaphore lock = new Semaphore(1, true);
     private final Path fileDataPath;
     private final Path fileStoragePath;
+    private final Path actualFileStoragePath;
     private final char[] vaultKey;
     private final byte[] iv;
     private final byte[] salt;
@@ -47,6 +51,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         this.logger = logger;
         fileDataPath = Path.of(basePath.toString(), FILE_DATA_NAME);
         fileStoragePath = Path.of(basePath.toString(), FILE_STORAGE_FOLDER_NAME);
+        actualFileStoragePath = Path.of(fileStoragePath.toString(), getInternalPath(Path.of("")).toString());
         this.vaultKey = vaultKey;
         this.fileManagerUpdateListener = fileManagerUpdateListener;
         String lastFileName = "0";
@@ -90,9 +95,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 iv = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
                 salt = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
                 Files.createFile(fileDataPath);
-                Files.createDirectories(fileStoragePath);
+                Files.createDirectories(actualFileStoragePath);
             }
-            removeFilesWithNoEntry(fileStoragePath, maskedFileEntries);
+            removeFilesWithNoEntry(actualFileStoragePath, maskedFileEntries, false);
         } catch (Exception e) {
             throw new Exception("Exception occurred while starting the FileManager : " + e.getMessage());
         }
@@ -105,17 +110,21 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    private void removeFilesWithNoEntry(Path current, Set<String> maskedFileEntries) {
+    private void removeFilesWithNoEntry(Path current, Set<String> maskedFileEntries, boolean canDeleteDirectoryIfEmpty) {
         if (Files.isDirectory(current)) {
             try (Stream<Path> stream = Files.list(current)) {
-                stream.forEach(subPath -> removeFilesWithNoEntry(subPath, maskedFileEntries));
+                stream.forEach(subPath -> removeFilesWithNoEntry(subPath, maskedFileEntries, true));
             } catch (Exception _) {
             }
-        } else if (Files.isRegularFile(current) && !maskedFileEntries.contains(current.toString())) {
-            try {
-                Files.delete(current);
-            } catch (Exception _) {
+            if (!canDeleteDirectoryIfEmpty) {
+                return;
             }
+        } else if (Files.isRegularFile(current) && maskedFileEntries.contains(current.toString())) {
+            return;
+        }
+        try {
+            Files.delete(current);
+        } catch (Exception _) {
         }
     }
 
@@ -132,16 +141,28 @@ public class FileManager implements FileTransferManagerListener, Writable {
         return n1 < n2 || (n1 == n2 && first.compareTo(second) < 0);
     }
 
-    private Path removeParent(Path childPath, Path parentPath) {
-        return Path.of(FILE_SEPARATOR, parentPath.normalize().relativize(childPath.normalize()).toString());
-    }
-
     private boolean isForbiddenFileName(String name) {
         return name.matches(FORBIDDEN_FILE_NAME);
     }
 
     private boolean isFileNameAllowed(String name) {
         return !isForbiddenFileName(name) && name.matches(ALLOWED_FILE_NAME);
+    }
+
+    private Path removeLeadingDotsFromPath(Path path) {
+        path = path.normalize();
+        Path resultPath = Path.of("");
+        for (Path subPath : path) {
+            if (!subPath.toString().equals("..")) {
+                resultPath = resultPath.resolve(subPath);
+            }
+        }
+        return resultPath;
+    }
+
+    private Path getInternalPath(Path path) {
+        path = removeLeadingDotsFromPath(path.normalize());
+        return Path.of(ROOT_DIRECTORY, path.toString());
     }
 
     private boolean validPath(Path path) {
@@ -153,12 +174,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
         return true;
     }
 
-    private Path normalizeAndValidatePath(Path path) throws InvalidPathException {
-        path = Path.of(FILE_SEPARATOR, path.normalize().toString());
+    private Path validateAndGetInternalPath(Path path) throws InvalidPathException {
+        path = getInternalPath(path);
         if (!validPath(path)) {
             throw new InvalidPathException(path.toString(), "Path must not contain forbidden file names and characters except [a-z], [A-Z], [0-9], [ ], [.], [_], [-], [$], [#], [@] .");
         }
-        return Path.of(FILE_SEPARATOR, path.toString());
+        return path;
     }
 
     private String sanitizeFileName(String fileName) {
@@ -179,11 +200,10 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     private Path sanitizePath(Path originalPath) {
-        originalPath = Path.of(FILE_SEPARATOR, originalPath.normalize().toString());
         if (validPath(originalPath)) {
             return originalPath;
         }
-        String[] paths = originalPath.toString().split(FILE_SEPARATOR);
+        String[] paths = originalPath.toString().split(QUOTED_FILE_SEPARATOR);
         int n = paths.length;
         for (int i = 0; i < n; i++) {
             paths[i] = sanitizeFileName(paths[i]);
@@ -206,7 +226,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         int n = nextMaskedFileName.length;
         char[] nextFileName = new char[n + 1];
-        Arrays.fill(nextFileName, 0, n + 1, '0');
+        Arrays.fill(nextFileName, '0');
         this.nextMaskedFileName = nextFileName;
     }
 
@@ -333,7 +353,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.isRegularFile(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
-        to = normalizeAndValidatePath(to);
+        to = validateAndGetInternalPath(to);
         if (!lock()) {
             return;
         }
@@ -353,7 +373,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         if (!Files.isDirectory(from)) {
             throw new FileNotFoundException("[" + from + "] doesn't exist.");
         }
-        to = normalizeAndValidatePath(to);
+        to = validateAndGetInternalPath(to);
         if (!lock()) {
             return;
         }
@@ -369,7 +389,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getFile(Path from, Path to) {
-        from = normalizeAndValidatePath(from);
+        from = validateAndGetInternalPath(from);
         to = to.normalize();
         if (!lock()) {
             return;
@@ -386,7 +406,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void getDirectory(Path from, Path to) {
-        from = normalizeAndValidatePath(from);
+        Path normalizedFrom = validateAndGetInternalPath(from);
+        Path parent = normalizedFrom.getParent();
+        if (parent == null) {
+            parent = Path.of("");
+        }
+        Path normalizedFromParent = parent;
         String normalizedTo = to.normalize().toString();
         if (!lock()) {
             return;
@@ -394,7 +419,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         try {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
-            allFiles.getAllFilesDataList(from.toString()).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, fileData.getFilePath()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
+            allFiles.getAllFilesDataList(normalizedFrom.toString()).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
             fileTransferManager.transferFiles(fileTransferDataList);
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the directory : " + e.getMessage());
@@ -404,7 +429,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public boolean changeFileName(Path path, String newOriginalName) {
-        path = normalizeAndValidatePath(path);
+        path = validateAndGetInternalPath(path);
         if (!lock()) {
             return false;
         }
@@ -434,7 +459,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteFile(Path path) {
-        path = normalizeAndValidatePath(path);
+        path = validateAndGetInternalPath(path);
         if (!lock()) {
             return;
         }
@@ -451,7 +476,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void makeDirectory(Path path) {
-        path = normalizeAndValidatePath(path);
+        path = validateAndGetInternalPath(path);
         try {
             Path directory = Path.of(fileStoragePath.toString(), path.toString());
             Files.createDirectories(directory);
@@ -465,7 +490,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         try (Stream<Path> subPaths = Files.list(path)) {
             subPaths.forEach(this::deleteEmptyDirectories);
-            if (!path.equals(fileStoragePath)) {
+            if (!path.equals(actualFileStoragePath)) {
                 Files.delete(path);
             }
         } catch (Exception _) {
@@ -473,7 +498,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public void deleteDirectory(Path path) {
-        path = normalizeAndValidatePath(path);
+        path = validateAndGetInternalPath(path);
         if (!lock()) {
             return;
         }
@@ -486,7 +511,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     public List<String> getFilesList(Path path) {
-        path = normalizeAndValidatePath(path);
+        path = validateAndGetInternalPath(path);
         List<String> fileDataList = new LinkedList<>();
         if (!lock()) {
             return null;
@@ -514,7 +539,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
             cipherOutputStream.write((FILE_SEPARATOR + "\n").getBytes());
-            for (FileData data : allFiles.getAllFilesDataList(FILE_SEPARATOR)) {
+            for (FileData data : allFiles.getAllFilesDataList(getInternalPath(Path.of("")).toString())) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
             }
@@ -544,7 +569,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             } else {
                 fromFileName = sanitizeFileName(from.getFileName().toString());
             }
-            FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), removeParent(to.getParent(), fileStoragePath).toString());
+            Path filePath = fileStoragePath.relativize(to.getParent());
+            FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), filePath.toString());
             allFiles.putFileData(fileData);
             logger.logInfo("File [" + from + "] added.");
         } else {
@@ -562,15 +588,14 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     static class PathTrie {
-        static final String SEPARATOR = FILE_SEPARATOR;
-        static final char SEPARATOR_CHAR = SEPARATOR.charAt(0);
-        PathTrieNode root = new PathTrieNode(SEPARATOR);
+        static final char SEPARATOR_CHAR = FILE_SEPARATOR.charAt(0);
+        PathTrieNode root = new PathTrieNode("");
 
         String[] splitPath(String path) {
             int n = path.length();
             for (int i = 0; i < n; i++) {
                 if (path.charAt(i) != SEPARATOR_CHAR) {
-                    return path.substring(i).split(SEPARATOR);
+                    return path.substring(i).split(QUOTED_FILE_SEPARATOR);
                 }
             }
             return new String[]{};
