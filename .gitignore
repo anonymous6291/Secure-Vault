@@ -2,7 +2,8 @@
 /SecureVaultInstaller/
 /package.sh
 /run_installer.sh
-target/
+target/*
+!target/secure-vault-core-1.0-SNAPSHOT.jar
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
