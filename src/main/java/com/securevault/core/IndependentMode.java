@@ -274,8 +274,9 @@ public class IndependentMode {
                         }
                         case GET_FILES_LIST -> {
                             Path path1 = Path.of(IO.readln("Enter the path: "));
+                            int depth = Integer.parseInt(IO.readln("Enter the depth (-1 to list all Files) : "));
                             IO.println("Files:");
-                            printFilesList(vault.getFilesList(path1));
+                            printFilesList(vault.getFilesList(path1, depth));
                         }
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));

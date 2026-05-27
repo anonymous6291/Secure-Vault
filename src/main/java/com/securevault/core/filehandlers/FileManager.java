@@ -332,6 +332,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             from = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
         }
         FileTransferData fileTransferData = new FileTransferData(from.normalize(), toFilePath.normalize(), fileTransferMode, notes);
+        fileTransferManager.transferFile(fileTransferData);
         fileTransferDataList.add(fileTransferData);
     }
 
@@ -419,7 +420,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         try {
             List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
-            allFiles.getAllFilesDataList(normalizedFrom.toString()).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
+            allFiles.getAllFilesDataList(normalizedFrom.toString(), -1).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
             fileTransferManager.transferFiles(fileTransferDataList);
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the directory : " + e.getMessage());
@@ -510,14 +511,14 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public List<String> getFilesList(Path path) {
+    public List<String> getFilesList(Path path, int depth) {
         path = validateAndGetInternalPath(path);
         List<String> fileDataList = new LinkedList<>();
         if (!lock()) {
             return null;
         }
         try {
-            allFiles.getAllFilesDataList(path.toString()).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
+            allFiles.getAllFilesDataList(path.toString(), depth).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
         } finally {
             unlock();
         }
@@ -539,7 +540,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
             cipherOutputStream.write((FILE_SEPARATOR + "\n").getBytes());
-            for (FileData data : allFiles.getAllFilesDataList(getInternalPath(Path.of("")).toString())) {
+            for (FileData data : allFiles.getAllFilesDataList(getInternalPath(Path.of("")).toString(), -1)) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
             }
@@ -674,12 +675,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return lastDirectory != null && lastDirectory.fileDataExists(paths[n]);
         }
 
-        List<FileData> getAllFilesDataList(String path) {
+        List<FileData> getAllFilesDataList(String path, int depth) {
             String[] paths = splitPath(path);
             List<FileData> allFilesData = new LinkedList<>();
             PathTrieNode last = getLastDirectory0(paths, 0, paths.length - 1);
             if (last != null) {
-                last.getFilesListRecursively(allFilesData);
+                last.getFilesListRecursively(allFilesData, depth);
             }
             return allFilesData;
         }
@@ -735,15 +736,19 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return directories.containsKey(name);
             }
 
-            void getFilesListRecursively(List<FileData> fileDataList) {
+            void getFilesListRecursively(List<FileData> fileDataList, int depth) {
                 fileDataList.addAll(filesData.values());
+                depth--;
+                if (depth == 0) {
+                    return;
+                }
                 for (PathTrieNode subPaths : directories.values()) {
-                    subPaths.getFilesListRecursively(fileDataList);
+                    subPaths.getFilesListRecursively(fileDataList, depth);
                 }
             }
 
             void deleteSelf(List<FileData> deletedFileData) {
-                getFilesListRecursively(deletedFileData);
+                getFilesListRecursively(deletedFileData, -1);
                 directories.clear();
                 filesData.clear();
             }

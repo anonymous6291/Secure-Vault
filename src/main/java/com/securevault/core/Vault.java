@@ -146,8 +146,8 @@ public class Vault {
         fileManager.deleteDirectory(path);
     }
 
-    public List<String> getFilesList(Path path) {
-        return fileManager.getFilesList(path);
+    public List<String> getFilesList(Path path, int depth) {
+        return fileManager.getFilesList(path, depth);
     }
 
     public void abortAllFileTransfers() {

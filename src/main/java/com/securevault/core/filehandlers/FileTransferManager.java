@@ -139,6 +139,34 @@ public class FileTransferManager implements FileTransferMonitor {
         universalLock.release();
     }
 
+    private void transferFile0(FileTransferData fileTransferData) {
+        FileTransferHandler fileTransferHandler = new FileTransferHandler(fileTransferData, key, nextFileHandlerId.getAndIncrement());
+        try {
+            Path to = fileTransferData.to();
+            Files.createDirectories(to.getParent());
+            pendingFiles.offer(fileTransferHandler);
+            dataToBeTransferred.addAndGet(fileTransferHandler.getDataToBeTransferred());
+            numberOfPendingFiles.incrementAndGet();
+        } catch (Exception e) {
+            logger.logError("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
+            failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
+        }
+    }
+
+    public void transferFile(FileTransferData fileTransferData) {
+        if (isShutdown()) {
+            throw new UnsupportedOperationException("FileTransferManager is shutdown, cannot transfer files.");
+        }
+        if (!acquireUniversalLock()) {
+            return;
+        }
+        try {
+            transferFile0(fileTransferData);
+        } finally {
+            releaseUniversalLock();
+        }
+    }
+
     public void transferFiles(List<FileTransferData> fileTransferDataList) {
         if (isShutdown()) {
             throw new UnsupportedOperationException("FileTransferManager is shutdown.");
@@ -146,20 +174,11 @@ public class FileTransferManager implements FileTransferMonitor {
         if (!acquireUniversalLock()) {
             return;
         }
-        fileTransferDataList.forEach(fileTransferData -> {
-            Path to = fileTransferData.to();
-            FileTransferHandler fileTransferHandler = new FileTransferHandler(fileTransferData, key, nextFileHandlerId.getAndIncrement());
-            try {
-                Files.createDirectories(to.getParent());
-                pendingFiles.offer(fileTransferHandler);
-                dataToBeTransferred.addAndGet(fileTransferHandler.getDataToBeTransferred());
-                numberOfPendingFiles.incrementAndGet();
-            } catch (Exception e) {
-                logger.logError("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
-                failedFiles.offer("[" + fileTransferHandler.getFromFilePath() + "] failed to transfer : " + e.getMessage());
-            }
-        });
-        releaseUniversalLock();
+        try {
+            fileTransferDataList.forEach(this::transferFile0);
+        } finally {
+            releaseUniversalLock();
+        }
     }
 
     public void abortAllFileTransfers() {

@@ -265,8 +265,14 @@ public class DependentMode implements FileManagerUpdateListener {
                         }
                     }
                     case GET_FILES_LIST -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList(Path.of(args.getFirst()))));
+                        if (validNumberOfArguments(command, 2)) {
+                            try {
+                                Path path = Path.of(args.getFirst());
+                                int depth = Integer.parseInt(args.get(1));
+                                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList(path, depth)));
+                            } catch (Exception e) {
+                                sendInvalidCommandInfo(command);
+                            }
                         }
                     }
                     case CHANGE_FILE_NAME -> {
@@ -336,7 +342,7 @@ public class DependentMode implements FileManagerUpdateListener {
                     case SEARCH_PASSWORD -> {
                         if (validNumberOfArguments(command, 1)) {
                             Set<String> result = vault.searchPassword(args.getFirst());
-                            sendOutput(new Output(OutputType.ERROR, command.commandId(), result.stream().toList()));
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
                         }
                     }
                     case DELETE_ALL_PASSWORDS -> vault.clearAllStoredPasswords();
