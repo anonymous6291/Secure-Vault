@@ -244,7 +244,7 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     static class FileTransferHandler implements Callable<FileTransferStatus> {
-        private static final int CHUNK_SIZE = 2 * 1024 * 1024;
+        private static final int CHUNK_SIZE = 512 * 1024;
         private final FileTransferData fileTransferData;
         private final Path from;
         private final Path to;
