@@ -265,11 +265,10 @@ public class DependentMode implements FileManagerUpdateListener {
                         }
                     }
                     case GET_FILES_LIST -> {
-                        if (validNumberOfArguments(command, 2)) {
+                        if (validNumberOfArguments(command, 1)) {
                             try {
                                 Path path = Path.of(args.getFirst());
-                                int depth = Integer.parseInt(args.get(1));
-                                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList(path, depth)));
+                                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), vault.getFilesList(path)));
                             } catch (Exception e) {
                                 sendInvalidCommandInfo(command);
                             }

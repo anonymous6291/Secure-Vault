@@ -412,7 +412,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         try {
             FileCopyOption fileCopyOption = new FileCopyOption();
-            allFiles.getAllFilesDataList(normalizedFrom.toString(), -1).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), FileTransferMode.DECRYPT, fileCopyOption));
+            allFiles.getAllFilesDataList(normalizedFrom.toString()).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), FileTransferMode.DECRYPT, fileCopyOption));
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the directory : " + e.getMessage());
         } finally {
@@ -502,14 +502,14 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public List<String> getFilesList(Path path, int depth) {
+    public List<String> getFilesList(Path path) {
         path = validateAndGetInternalPath(path);
         List<String> fileDataList = new LinkedList<>();
         if (!lock()) {
             return null;
         }
         try {
-            allFiles.getAllFilesDataList(path.toString(), depth).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
+            allFiles.getAllFilesDataList(path.toString()).forEach(fileData -> fileDataList.add(fileData.getOriginalFilePath().toString()));
         } finally {
             unlock();
         }
@@ -531,7 +531,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             Cipher cipher = CipherManager.getCipher(vaultKey, iv, salt, Cipher.ENCRYPT_MODE);
             CipherOutputStream cipherOutputStream = new CipherOutputStream(bufferedOutputStream, cipher);
             cipherOutputStream.write((FILE_SEPARATOR + "\n").getBytes());
-            for (FileData data : allFiles.getAllFilesDataList(getInternalPath(Path.of("")).toString(), -1)) {
+            for (FileData data : allFiles.getAllFilesDataList(getInternalPath(Path.of("")).toString())) {
                 String value = data.getFilePath() + "\n" + data.getMaskedName() + "\n" + data.getOriginalName() + "\n";
                 cipherOutputStream.write(value.getBytes());
             }
@@ -666,12 +666,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return lastDirectory != null && lastDirectory.fileDataExists(paths[n]);
         }
 
-        List<FileData> getAllFilesDataList(String path, int depth) {
+        List<FileData> getAllFilesDataList(String path) {
             String[] paths = splitPath(path);
             List<FileData> allFilesData = new LinkedList<>();
             PathTrieNode last = getLastDirectory0(paths, 0, paths.length - 1);
             if (last != null) {
-                last.getFilesListRecursively(allFilesData, depth);
+                last.getFilesListRecursively(allFilesData);
             }
             return allFilesData;
         }
@@ -727,19 +727,15 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return directories.containsKey(name);
             }
 
-            void getFilesListRecursively(List<FileData> fileDataList, int depth) {
+            void getFilesListRecursively(List<FileData> fileDataList) {
                 fileDataList.addAll(filesData.values());
-                depth--;
-                if (depth == 0) {
-                    return;
-                }
                 for (PathTrieNode subPaths : directories.values()) {
-                    subPaths.getFilesListRecursively(fileDataList, depth);
+                    subPaths.getFilesListRecursively(fileDataList);
                 }
             }
 
             void deleteSelf(List<FileData> deletedFileData) {
-                getFilesListRecursively(deletedFileData, -1);
+                getFilesListRecursively(deletedFileData);
                 directories.clear();
                 filesData.clear();
             }
