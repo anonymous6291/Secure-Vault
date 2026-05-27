@@ -277,7 +277,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         return newFilePath;
     }
 
-    private void addFileForTransfer(Path from, Path to, List<FileTransferData> fileTransferDataList, FileTransferMode fileTransferMode, FileCopyOption fileCopyOption) {
+    private void addFileForTransfer(Path from, Path to, FileTransferMode fileTransferMode, FileCopyOption fileCopyOption) {
         if ((fileTransferMode == FileTransferMode.ENCRYPT && !Files.isRegularFile(from)) || (fileTransferMode == FileTransferMode.DECRYPT && !allFiles.fileExists(from.toString()))) {
             return;
         }
@@ -304,7 +304,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             } else if (fileCopyType == FileCopyOption.Type.ASK) {
                 int responseIndex = fileManagerUpdateListener.askForResponse("File [" + targetFilePath + "] already exists in vault.", FileCopyOption.options);
                 fileCopyOption.setType(responseIndex);
-                addFileForTransfer(from, to, fileTransferDataList, fileTransferMode, fileCopyOption);
+                addFileForTransfer(from, to, fileTransferMode, fileCopyOption);
                 return;
             } else {
                 if (fileTransferMode == FileTransferMode.ENCRYPT) {
@@ -333,19 +333,18 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         FileTransferData fileTransferData = new FileTransferData(from.normalize(), toFilePath.normalize(), fileTransferMode, notes);
         fileTransferManager.transferFile(fileTransferData);
-        fileTransferDataList.add(fileTransferData);
     }
 
-    private void recursivelyAddFiles(Path from, Path to, List<FileTransferData> fileTransferDataList, FileCopyOption fileCopyOption) {
+    private void recursivelyAddFiles(Path from, Path to, FileCopyOption fileCopyOption) {
         if (Files.isDirectory(from)) {
             Path toSubDirectory = Path.of(to.toString(), from.getFileName().toString());
             try (Stream<Path> pathStream = Files.list(from)) {
-                pathStream.forEach(fromSubFile -> recursivelyAddFiles(fromSubFile, toSubDirectory, fileTransferDataList, fileCopyOption));
+                pathStream.forEach(fromSubFile -> recursivelyAddFiles(fromSubFile, toSubDirectory, fileCopyOption));
             } catch (Exception e) {
                 logger.logError("Exception occurred while traversing files : " + e.getMessage());
             }
         } else if (Files.isRegularFile(from)) {
-            addFileForTransfer(from, to, fileTransferDataList, FileTransferMode.ENCRYPT, fileCopyOption);
+            addFileForTransfer(from, to, FileTransferMode.ENCRYPT, fileCopyOption);
         }
     }
 
@@ -359,9 +358,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return;
         }
         try {
-            List<FileTransferData> fileTransferDataList = new LinkedList<>();
-            addFileForTransfer(from, to, fileTransferDataList, FileTransferMode.ENCRYPT, new FileCopyOption());
-            fileTransferManager.transferFiles(fileTransferDataList);
+            addFileForTransfer(from, to, FileTransferMode.ENCRYPT, new FileCopyOption());
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while adding the file : " + e.getMessage());
         } finally {
@@ -379,9 +376,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return;
         }
         try {
-            List<FileTransferData> fileTransferDataList = new LinkedList<>();
-            recursivelyAddFiles(from, to, fileTransferDataList, new FileCopyOption());
-            fileTransferManager.transferFiles(fileTransferDataList);
+            recursivelyAddFiles(from, to, new FileCopyOption());
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while adding the directory : " + e.getMessage());
         } finally {
@@ -396,9 +391,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return;
         }
         try {
-            List<FileTransferData> fileTransferDataList = new LinkedList<>();
-            addFileForTransfer(from, to, fileTransferDataList, FileTransferMode.DECRYPT, new FileCopyOption());
-            fileTransferManager.transferFiles(fileTransferDataList);
+            addFileForTransfer(from, to, FileTransferMode.DECRYPT, new FileCopyOption());
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the file : " + e.getMessage());
         } finally {
@@ -418,10 +411,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return;
         }
         try {
-            List<FileTransferData> fileTransferDataList = new LinkedList<>();
             FileCopyOption fileCopyOption = new FileCopyOption();
-            allFiles.getAllFilesDataList(normalizedFrom.toString(), -1).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), fileTransferDataList, FileTransferMode.DECRYPT, fileCopyOption));
-            fileTransferManager.transferFiles(fileTransferDataList);
+            allFiles.getAllFilesDataList(normalizedFrom.toString(), -1).forEach(fileData -> addFileForTransfer(fileData.getOriginalFilePath(), Path.of(normalizedTo, normalizedFromParent.relativize(fileData.getFilePath()).toString()), FileTransferMode.DECRYPT, fileCopyOption));
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the directory : " + e.getMessage());
         } finally {
