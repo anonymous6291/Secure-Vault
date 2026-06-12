@@ -4,7 +4,9 @@ import com.securevault.core.configurations.ConfigurationManager;
 import com.securevault.core.filehandlers.FileManager;
 import com.securevault.core.filehandlers.VaultException;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.keyhandlers.KeyType;
 import com.securevault.core.keyhandlers.PasswordAndAPIKeyManager;
+import com.securevault.core.keyhandlers.WebsiteIdPair;
 
 import javax.crypto.AEADBadTagException;
 import java.io.FileNotFoundException;
@@ -154,44 +156,28 @@ public class Vault {
         fileManager.abortAllFileTransfers();
     }
 
-    public void putPassword(String name, String value) {
-        passwordAndAPIKeyManager.putPassword(name, value);
+    public boolean addKey(WebsiteIdPair websiteIdPair, String value, KeyType keyType) {
+        return passwordAndAPIKeyManager.addKey(websiteIdPair, value, keyType);
     }
 
-    public String getPassword(String name) {
-        return passwordAndAPIKeyManager.getPassword(name);
+    public String getKeyValue(WebsiteIdPair websiteIdPair, KeyType keyType) {
+        return passwordAndAPIKeyManager.getKeyValue(websiteIdPair, keyType);
     }
 
-    public void deletePassword(String name) {
-        passwordAndAPIKeyManager.deletePassword(name);
+    public void deleteKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
+        passwordAndAPIKeyManager.deleteKey(websiteIdPair, keyType);
     }
 
-    public Set<String> searchPassword(String prefix) {
-        return passwordAndAPIKeyManager.searchPassword(prefix);
+    public Set<WebsiteIdPair> searchKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
+        return passwordAndAPIKeyManager.searchKey(websiteIdPair, keyType);
     }
 
-    public void clearAllStoredPasswords() {
-        passwordAndAPIKeyManager.clearAllPasswords();
+    public void clearKeys(KeyType keyType) {
+        passwordAndAPIKeyManager.clearKeys(keyType);
     }
 
-    public void putAPIKey(String name, String value) {
-        passwordAndAPIKeyManager.putAPIKey(name, value);
-    }
-
-    public String getAPIKey(String name) {
-        return passwordAndAPIKeyManager.getAPIKey(name);
-    }
-
-    public void deleteAPIKey(String name) {
-        passwordAndAPIKeyManager.deleteAPIKey(name);
-    }
-
-    public Set<String> searchAPIKey(String prefix) {
-        return passwordAndAPIKeyManager.searchAPIKey(prefix);
-    }
-
-    public void clearAllStoredAPIKeys() {
-        passwordAndAPIKeyManager.clearAllAPIKeys();
+    public Set<WebsiteIdPair> getAllKeys(KeyType keyType) {
+        return passwordAndAPIKeyManager.getAllKeys(keyType);
     }
 
     public void changeVaultPassword(char[] currentPassword, char[] newKey) throws Exception {

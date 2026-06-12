@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securevault.core.filehandlers.FileTransferMonitor;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.keyhandlers.KeyType;
+import com.securevault.core.keyhandlers.WebsiteIdPair;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -323,51 +325,59 @@ public class DependentMode implements FileManagerUpdateListener {
                     case GET_FILE_TRANSFER_PROGRESS ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Double.toString(fileTransferMonitor.getFileTransferProgress()))));
                     case PUT_PASSWORD -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            vault.putPassword(args.getFirst(), args.get(1));
+                        if (validNumberOfArguments(command, 3)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            String value = args.get(2);
+                            vault.addKey(websiteIdPair, value, KeyType.PASSWORD);
                         }
                     }
                     case GET_PASSWORD -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            String response = vault.getPassword(args.getFirst());
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            String response = vault.getKeyValue(websiteIdPair, KeyType.PASSWORD);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
                         }
                     }
                     case DELETE_PASSWORD -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            vault.deletePassword(args.getFirst());
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            vault.deleteKey(websiteIdPair, KeyType.PASSWORD);
                         }
                     }
                     case SEARCH_PASSWORD -> {
                         if (validNumberOfArguments(command, 1)) {
-                            Set<String> result = vault.searchPassword(args.getFirst());
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
+                            //Set<String> result = vault.searchPassword(args.getFirst());
+                            //sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
                         }
                     }
-                    case DELETE_ALL_PASSWORDS -> vault.clearAllStoredPasswords();
+                    case DELETE_ALL_PASSWORDS -> vault.clearKeys(KeyType.PASSWORD);
                     case PUT_API_KEY -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            vault.putAPIKey(args.getFirst(), args.get(1));
+                        if (validNumberOfArguments(command, 3)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            String value = args.get(2);
+                            vault.addKey(websiteIdPair, value, KeyType.API_KEY);
                         }
                     }
                     case GET_API_KEY -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            String response = vault.getAPIKey(args.getFirst());
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            String response = vault.getKeyValue(websiteIdPair, KeyType.API_KEY);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
                         }
                     }
                     case DELETE_API_KEY -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            vault.deleteAPIKey(args.getFirst());
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            vault.deleteKey(websiteIdPair, KeyType.API_KEY);
                         }
                     }
                     case SEARCH_API_KEY -> {
                         if (validNumberOfArguments(command, 1)) {
-                            Set<String> result = vault.searchAPIKey(args.getFirst());
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
+                           // Set<String> result = vault.searchAPIKey(args.getFirst());
+                           // sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
                         }
                     }
-                    case DELETE_ALL_API_KEYS -> vault.clearAllStoredAPIKeys();
+                    case DELETE_ALL_API_KEYS -> vault.clearKeys(KeyType.API_KEY);
                     case GET_LOG -> {
                         if (validNumberOfArguments(command, 1)) {
                             try {

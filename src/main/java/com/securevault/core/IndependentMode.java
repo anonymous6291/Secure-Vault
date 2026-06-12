@@ -2,6 +2,8 @@ package com.securevault.core;
 
 import com.securevault.core.filehandlers.FileTransferMonitor;
 import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.keyhandlers.KeyType;
+import com.securevault.core.keyhandlers.WebsiteIdPair;
 
 import java.io.Console;
 import java.io.File;
@@ -45,11 +47,13 @@ public class IndependentMode {
         COMMANDS.put("dp", CommandType.DELETE_PASSWORD);
         COMMANDS.put("sp", CommandType.SEARCH_PASSWORD);
         COMMANDS.put("dap", CommandType.DELETE_ALL_PASSWORDS);
+        COMMANDS.put("gap", CommandType.GET_ALL_PASSWORDS);
         COMMANDS.put("pak", CommandType.PUT_API_KEY);
         COMMANDS.put("gak", CommandType.GET_API_KEY);
         COMMANDS.put("dak", CommandType.DELETE_API_KEY);
         COMMANDS.put("sak", CommandType.SEARCH_API_KEY);
         COMMANDS.put("daak", CommandType.DELETE_ALL_API_KEYS);
+        COMMANDS.put("gaak", CommandType.GET_ALL_API_KEYS);
         COMMANDS.put("gnopft", CommandType.GET_NUMBER_OF_PENDING_FILE_TRANSFERS);
         COMMANDS.put("gnofft", CommandType.GET_NUMBER_OF_FAILED_FILE_TRANSFERS);
         COMMANDS.put("gfftl", CommandType.GET_FAILED_FILE_TRANSFERS_LIST);
@@ -75,9 +79,9 @@ public class IndependentMode {
     public static void start(String[] args) {
         try {
             int n = args.length, i = 0;
-            String path = null;
-            boolean create = true;
-            String password;
+            String path = "/home/anonymous/Desktop/SecureVaultData";//null;
+            boolean create = false;//true;
+            String password = "hello";
             while (i < n) {
                 if (args[i] != null) {
                     if (args[i].equals(VAULT_PATH_ARGUMENT)) {
@@ -97,15 +101,15 @@ public class IndependentMode {
                 path = IO.readln("Enter the vault path: ");
                 create = IO.readln("You want to create the vault, [yes|no] ? ").matches(CONFIRM_REGEX);
             }
-            IO.println("Enter the password: ");
-            password = readConfidentialString();
-            if (create) {
+            //IO.println("Enter the password: ");
+            //password = readConfidentialString();
+            /*if (create) {
                 IO.println("Renter the password: ");
                 if (!password.equals(readConfidentialString())) {
                     IO.println("Password didn't match.");
                     return;
                 }
-            }
+            }*/
             independentModeVaultStart(path, create, password.toCharArray());
         } catch (Exception e) {
             IO.println("Exception occurred in Secret Vault: " + e.getMessage());
@@ -308,52 +312,84 @@ public class IndependentMode {
                             }
                         }
                         case PUT_PASSWORD -> {
-                            String name = IO.readln("Name of password: ");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
                             IO.println("Enter the password: ");
                             String value = readConfidentialString();
-                            vault.putPassword(name, value);
+                            if (vault.addKey(new WebsiteIdPair(websiteName, id), value, KeyType.PASSWORD)) {
+                                IO.println("Added");
+                            } else {
+                                IO.println("Not added.");
+                            }
                         }
                         case GET_PASSWORD -> {
-                            String value = vault.getPassword(IO.readln("Enter the name: "));
-                            String printString = "The password is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
-                            IO.readln(printString);
-                            IO.println("\033[2J\033[H");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
+                            String value = vault.getKeyValue(new WebsiteIdPair(websiteName, id), KeyType.PASSWORD);
+                            if (value == null) {
+                                IO.println("Password not found.");
+                            } else {
+                                String printString = "The password is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
+                                IO.readln(printString);
+                                IO.println("\033[2J\033[H");
+                            }
                         }
                         case DELETE_PASSWORD -> {
-                            String name = IO.readln("Enter the name: ");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
                             if (confirmAction(usageCommand)) {
-                                vault.deletePassword(name);
+                                vault.deleteKey(new WebsiteIdPair(websiteName, id), KeyType.PASSWORD);
                             }
                         }
-                        case SEARCH_PASSWORD -> IO.println(vault.searchPassword(IO.readln("Enter the prefix: ")));
+                        //case SEARCH_PASSWORD -> IO.println(vault.searchPassword(IO.readln("Enter the prefix: ")));
                         case DELETE_ALL_PASSWORDS -> {
                             if (confirmAction(usageCommand)) {
-                                vault.clearAllStoredPasswords();
+                                vault.clearKeys(KeyType.PASSWORD);
                             }
+                        }
+                        case GET_ALL_PASSWORDS -> {
+                            IO.println("All stored passwords:");
+                            vault.getAllKeys(KeyType.PASSWORD).forEach(IO::println);
                         }
                         case PUT_API_KEY -> {
-                            String name = IO.readln("Name of API Key: ");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
                             IO.println("Enter the API Key: ");
                             String value = readConfidentialString();
-                            vault.putAPIKey(name, value);
+                            if (vault.addKey(new WebsiteIdPair(websiteName, id), value, KeyType.API_KEY)) {
+                                IO.println("Added");
+                            } else {
+                                IO.println("Not added.");
+                            }
                         }
                         case GET_API_KEY -> {
-                            String value = vault.getAPIKey(IO.readln("Enter the name: "));
-                            String printString = "The API Key is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
-                            IO.readln(printString);
-                            IO.println("\033[2J\033[H");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
+                            String value = vault.getKeyValue(new WebsiteIdPair(websiteName, id), KeyType.API_KEY);
+                            if (value == null) {
+                                IO.println("API Key not found.");
+                            } else {
+                                String printString = "The API Key is: \"" + value + "\".\nWhen you are done, press enter so that screen can be cleared.";
+                                IO.readln(printString);
+                                IO.println("\033[2J\033[H");
+                            }
                         }
                         case DELETE_API_KEY -> {
-                            String name = IO.readln("Enter the name: ");
+                            String websiteName = IO.readln("Website: ");
+                            String id = IO.readln("ID: ");
                             if (confirmAction(usageCommand)) {
-                                vault.deleteAPIKey(name);
+                                vault.deleteKey(new WebsiteIdPair(websiteName, id), KeyType.API_KEY);
                             }
                         }
-                        case SEARCH_API_KEY -> IO.println(vault.searchAPIKey(IO.readln("Enter the prefix: ")));
+                        //case SEARCH_API_KEY -> IO.println(vault.searchAPIKey(IO.readln("Enter the prefix: ")));
                         case DELETE_ALL_API_KEYS -> {
                             if (confirmAction(usageCommand)) {
-                                vault.clearAllStoredAPIKeys();
+                                vault.clearKeys(KeyType.API_KEY);
                             }
+                        }
+                        case GET_ALL_API_KEYS-> {
+                            IO.println("All stored API Keys:");
+                            vault.getAllKeys(KeyType.API_KEY).forEach(IO::println);
                         }
                         case GET_NUMBER_OF_PENDING_FILE_TRANSFERS ->
                                 IO.println(fileTransferMonitor.getNumberOfPendingFileTransfers());
