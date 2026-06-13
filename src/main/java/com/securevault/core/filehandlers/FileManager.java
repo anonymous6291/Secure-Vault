@@ -289,7 +289,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         } else {
             targetFilePath = Path.of(to.toString(), from.getFileName().toString());
         }
-        if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.fileExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.isRegularFile(targetFilePath))) {
+        if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.fileExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.exists(targetFilePath))) {
             FileCopyOption.Type fileCopyType = fileCopyOption.getType();
             if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                 String renamedName = sanitizeFileName(renameFile(targetFilePath, fileTransferMode).getFileName().toString());
@@ -302,8 +302,17 @@ public class FileManager implements FileTransferManagerListener, Writable {
             } else if (fileCopyType == FileCopyOption.Type.SKIP_ALL || fileCopyType == FileCopyOption.Type.SKIP) {
                 return;
             } else if (fileCopyType == FileCopyOption.Type.ASK) {
-                int responseIndex = fileManagerUpdateListener.askForResponse("File [" + targetFilePath + "] already exists in vault.", FileCopyOption.options);
-                fileCopyOption.setType(responseIndex);
+                List<String> options;
+                String message ;
+                if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.directoryExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.isDirectory(targetFilePath))) {
+                    options = FileCopyOption.optionsExceptReplace;
+                    message = "[" + targetFilePath + "] is a directory.";
+                } else {
+                    options = FileCopyOption.options;
+                    message = "File [" + targetFilePath + "] already exists.";
+                }
+                String response = fileManagerUpdateListener.askForResponse(message, options);
+                fileCopyOption.setType(Enum.valueOf(FileCopyOption.Type.class, response));
                 addFileForTransfer(from, to, fileTransferMode, fileCopyOption);
                 return;
             } else {
@@ -663,7 +672,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return false;
             }
             PathTrieNode lastDirectory = getLastDirectory0(paths, 0, n - 1);
-            return lastDirectory != null && lastDirectory.fileDataExists(paths[n]);
+            return lastDirectory != null && (lastDirectory.isDirectory(paths[n]) || lastDirectory.fileDataExists(paths[n]));
         }
 
         List<FileData> getAllFilesDataList(String path) {
@@ -752,6 +761,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
 
     static class FileCopyOption {
         private static final List<String> options = Arrays.stream(Type.values()).filter(x -> x != Type.ASK).map(Enum::toString).toList();
+        private static final List<String> optionsExceptReplace = options.stream().filter(x -> !(x.equals(Type.REPLACE.toString()) || x.equals(Type.REPLACE_ALL.toString()))).toList();
         private Type type;
 
         FileCopyOption() {
@@ -786,7 +796,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
 
         enum Type {
-            ASK, REPLACE, REPLACE_ALL, RENAME, RENAME_ALL, SKIP, SKIP_ALL
+            ASK, RENAME, RENAME_ALL, REPLACE, REPLACE_ALL, SKIP, SKIP_ALL
         }
     }
 }

@@ -15,10 +15,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Base64;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.Semaphore;
 
 public class PasswordAndAPIKeyManager implements Writable {
@@ -170,12 +167,18 @@ public class PasswordAndAPIKeyManager implements Writable {
         }
     }
 
-    public Set<WebsiteIdPair> searchKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
+    public List<WebsiteIdPair> searchKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
+        List<WebsiteIdPair> result = new LinkedList<>();
         if (notLocked()) {
-            return Set.of();
+            return result;
         }
         try {
-            return null;
+            if (keyType == KeyType.PASSWORD) {
+                result.addAll(passwords.keySet());
+            } else {
+                result.addAll(apiKeys.keySet());
+            }
+            return result.stream().filter(x -> x.websiteName().startsWith(websiteIdPair.websiteName())).filter(x -> x.id().startsWith(websiteIdPair.id())).toList();
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while searching the password : " + e.getMessage());
         } finally {

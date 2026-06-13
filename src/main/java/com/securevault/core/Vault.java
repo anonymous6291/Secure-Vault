@@ -168,7 +168,7 @@ public class Vault {
         passwordAndAPIKeyManager.deleteKey(websiteIdPair, keyType);
     }
 
-    public Set<WebsiteIdPair> searchKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
+    public List<WebsiteIdPair> searchKey(WebsiteIdPair websiteIdPair, KeyType keyType) {
         return passwordAndAPIKeyManager.searchKey(websiteIdPair, keyType);
     }
 

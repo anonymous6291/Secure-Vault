@@ -170,7 +170,7 @@ public class IndependentMode {
             }
 
             @Override
-            public int askForResponse(String query, List<String> options) {
+            public String askForResponse(String query, List<String> options) {
                 IO.println(query + "\nOptions:");
                 int i = 1;
                 for (String option : options) {
@@ -178,9 +178,13 @@ public class IndependentMode {
                 }
                 while (true) {
                     try {
-                        return Integer.parseInt(IO.readln("Enter the option number: ")) - 1;
+                        int index = Integer.parseInt(IO.readln("Enter the option number: ")) - 1;
+                        if (index >= 0 && index < options.size()) {
+                            return options.get(index);
+                        }
                     } catch (Exception _) {
                     }
+                    IO.println("Invalid option number.");
                 }
             }
 
@@ -341,15 +345,19 @@ public class IndependentMode {
                                 vault.deleteKey(new WebsiteIdPair(websiteName, id), KeyType.PASSWORD);
                             }
                         }
-                        //case SEARCH_PASSWORD -> IO.println(vault.searchPassword(IO.readln("Enter the prefix: ")));
+                        case SEARCH_PASSWORD -> {
+                            String websiteName = IO.readln("Website name or empty to list all: ");
+                            String id = IO.readln("ID or empty to list all: ");
+                            vault.searchKey(new WebsiteIdPair(websiteName, id), KeyType.PASSWORD).stream().map(WebsiteIdPair::convertToJSON).forEach(IO::println);
+                        }
                         case DELETE_ALL_PASSWORDS -> {
                             if (confirmAction(usageCommand)) {
                                 vault.clearKeys(KeyType.PASSWORD);
                             }
                         }
                         case GET_ALL_PASSWORDS -> {
-                            IO.println("All stored passwords:");
-                            vault.getAllKeys(KeyType.PASSWORD).forEach(IO::println);
+                            IO.println("All stored Passwords:");
+                            vault.getAllKeys(KeyType.PASSWORD).stream().map(WebsiteIdPair::convertToJSON).forEach(IO::println);
                         }
                         case PUT_API_KEY -> {
                             String websiteName = IO.readln("Website: ");
@@ -381,15 +389,19 @@ public class IndependentMode {
                                 vault.deleteKey(new WebsiteIdPair(websiteName, id), KeyType.API_KEY);
                             }
                         }
-                        //case SEARCH_API_KEY -> IO.println(vault.searchAPIKey(IO.readln("Enter the prefix: ")));
+                        case SEARCH_API_KEY -> {
+                            String websiteName = IO.readln("Website name or empty to list all: ");
+                            String id = IO.readln("ID or empty to list all: ");
+                            vault.searchKey(new WebsiteIdPair(websiteName, id), KeyType.API_KEY).stream().map(WebsiteIdPair::convertToJSON).forEach(IO::println);
+                        }
                         case DELETE_ALL_API_KEYS -> {
                             if (confirmAction(usageCommand)) {
                                 vault.clearKeys(KeyType.API_KEY);
                             }
                         }
-                        case GET_ALL_API_KEYS-> {
+                        case GET_ALL_API_KEYS -> {
                             IO.println("All stored API Keys:");
-                            vault.getAllKeys(KeyType.API_KEY).forEach(IO::println);
+                            vault.getAllKeys(KeyType.API_KEY).stream().map(WebsiteIdPair::convertToJSON).forEach(IO::println);
                         }
                         case GET_NUMBER_OF_PENDING_FILE_TRANSFERS ->
                                 IO.println(fileTransferMonitor.getNumberOfPendingFileTransfers());

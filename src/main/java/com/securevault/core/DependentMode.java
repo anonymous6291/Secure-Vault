@@ -18,7 +18,6 @@ import java.security.spec.KeySpec;
 import java.util.Base64;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
@@ -345,12 +344,15 @@ public class DependentMode implements FileManagerUpdateListener {
                         }
                     }
                     case SEARCH_PASSWORD -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            //Set<String> result = vault.searchPassword(args.getFirst());
-                            //sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            List<WebsiteIdPair> result = vault.searchKey(websiteIdPair, KeyType.PASSWORD);
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().map(WebsiteIdPair::convertToJSON).toList()));
                         }
                     }
                     case DELETE_ALL_PASSWORDS -> vault.clearKeys(KeyType.PASSWORD);
+                    case GET_ALL_PASSWORDS ->
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId, vault.getAllKeys(KeyType.PASSWORD).stream().map(WebsiteIdPair::convertToJSON).toList()));
                     case PUT_API_KEY -> {
                         if (validNumberOfArguments(command, 3)) {
                             WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
@@ -372,12 +374,15 @@ public class DependentMode implements FileManagerUpdateListener {
                         }
                     }
                     case SEARCH_API_KEY -> {
-                        if (validNumberOfArguments(command, 1)) {
-                           // Set<String> result = vault.searchAPIKey(args.getFirst());
-                           // sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().toList()));
+                        if (validNumberOfArguments(command, 2)) {
+                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
+                            List<WebsiteIdPair> result = vault.searchKey(websiteIdPair, KeyType.API_KEY);
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().map(WebsiteIdPair::convertToJSON).toList()));
                         }
                     }
                     case DELETE_ALL_API_KEYS -> vault.clearKeys(KeyType.API_KEY);
+                    case GET_ALL_API_KEYS ->
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId, vault.getAllKeys(KeyType.API_KEY).stream().map(WebsiteIdPair::convertToJSON).toList()));
                     case GET_LOG -> {
                         if (validNumberOfArguments(command, 1)) {
                             try {
@@ -422,7 +427,7 @@ public class DependentMode implements FileManagerUpdateListener {
     }
 
     @Override
-    public int askForResponse(String query, List<String> options) {
+    public String askForResponse(String query, List<String> options) {
         int id = responseId.getAndIncrement();
         List<String> list = new LinkedList<>();
         list.add(Integer.toString(id));
@@ -430,15 +435,7 @@ public class DependentMode implements FileManagerUpdateListener {
         list.addAll(options);
         ResponseHandler responseHandler = registerResponseHandler(id);
         sendOutput(new Output(OutputType.QUERY, -1, list));
-        String response = responseHandler.getResponse();
-        int i = 0;
-        for (String option : options) {
-            if (option.equals(response)) {
-                return i;
-            }
-            i++;
-        }
-        return 0;
+        return responseHandler.getResponse();
     }
 
     @Override
