@@ -79,9 +79,9 @@ public class IndependentMode {
     public static void start(String[] args) {
         try {
             int n = args.length, i = 0;
-            String path = "/home/anonymous/Desktop/SecureVaultData";//null;
-            boolean create = false;//true;
-            String password = "hello";
+            String path = null;
+            boolean create = true;
+            String password;
             while (i < n) {
                 if (args[i] != null) {
                     if (args[i].equals(VAULT_PATH_ARGUMENT)) {
@@ -101,15 +101,15 @@ public class IndependentMode {
                 path = IO.readln("Enter the vault path: ");
                 create = IO.readln("You want to create the vault, [yes|no] ? ").matches(CONFIRM_REGEX);
             }
-            //IO.println("Enter the password: ");
-            //password = readConfidentialString();
-            /*if (create) {
+            IO.println("Enter the password: ");
+            password = readConfidentialString();
+            if (create) {
                 IO.println("Renter the password: ");
                 if (!password.equals(readConfidentialString())) {
                     IO.println("Password didn't match.");
                     return;
                 }
-            }*/
+            }
             independentModeVaultStart(path, create, password.toCharArray());
         } catch (Exception e) {
             IO.println("Exception occurred in Secret Vault: " + e.getMessage());
