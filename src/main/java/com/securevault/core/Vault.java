@@ -3,7 +3,7 @@ package com.securevault.core;
 import com.securevault.core.configurations.ConfigurationManager;
 import com.securevault.core.filehandlers.FileManager;
 import com.securevault.core.filehandlers.VaultException;
-import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.listeners.FileManagerListener;
 import com.securevault.core.keyhandlers.KeyType;
 import com.securevault.core.keyhandlers.PasswordAndAPIKeyManager;
 import com.securevault.core.keyhandlers.WebsiteIdPair;
@@ -36,7 +36,7 @@ public class Vault {
     private char[] password;
     private volatile boolean isVaultOpen;
 
-    public Vault(String path, boolean create, char[] password, FileManagerUpdateListener fileManagerUpdateListener, boolean independentMode) throws Exception {
+    public Vault(String path, boolean create, char[] password, FileManagerListener fileManagerListener, boolean independentMode) throws Exception {
         assertVaultKeyRequirement(password);
         this.password = password.clone();
         Path vaultPath = Paths.get(path, VAULT_FOLDER_NAME).normalize();
@@ -61,7 +61,7 @@ public class Vault {
         logger = new Logger(getPath(""), vaultKey, create, independentMode);
         logger.logInfo("Vault opened.");
         try {
-            fileManager = new FileManager(getPath(""), vaultKey, create, fileManagerUpdateListener, logger);
+            fileManager = new FileManager(getPath(""), vaultKey, create, fileManagerListener, logger);
             passwordAndAPIKeyManager = new PasswordAndAPIKeyManager(getPath(""), vaultKey, create, logger);
         } catch (Exception e) {
             logger.logError(e.getMessage());

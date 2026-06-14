@@ -3,7 +3,7 @@ package com.securevault.core;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.securevault.core.filehandlers.FileTransferMonitor;
-import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.listeners.FileManagerListener;
 import com.securevault.core.keyhandlers.KeyType;
 import com.securevault.core.keyhandlers.WebsiteIdPair;
 
@@ -29,10 +29,11 @@ enum OutputType {
     INVALID_COMMAND,
     RESPONSE,
     QUERY,
-    UPDATE,
+    UPDATE_FILE_ADDED,
+    UPDATE_FILE_TRANSFER_FAILED,
 }
 
-public class DependentMode implements FileManagerUpdateListener {
+public class DependentMode implements FileManagerListener {
     private static final String ERROR_STRING = "ERROR;";
     private static final String IMMEDIATE_SHUTDOWN = "SHUTDOWN";
     private static final Semaphore lock = new Semaphore(1, true);
@@ -439,8 +440,13 @@ public class DependentMode implements FileManagerUpdateListener {
     }
 
     @Override
-    public void newUpdate(String update) {
-        sendOutput(new Output(OutputType.UPDATE, 0, List.of(update)));
+    public void fileAdded(String fileName) {
+        sendOutput(new Output(OutputType.UPDATE_FILE_ADDED, 0, List.of(fileName)));
+    }
+
+    @Override
+    public void fileTransferFailed(String filePath) {
+        sendOutput(new Output(OutputType.UPDATE_FILE_TRANSFER_FAILED, 0, List.of(filePath)));
     }
 
     record Command(CommandType type, int commandId, List<String> args) {

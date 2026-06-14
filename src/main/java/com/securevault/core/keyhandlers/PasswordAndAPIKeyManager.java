@@ -25,6 +25,11 @@ public class PasswordAndAPIKeyManager implements Writable {
     private static final ObjectMapper jsonHandler = new ObjectMapper();
     private static final Base64.Encoder encoder = Base64.getEncoder();
     private static final Base64.Decoder decoder = Base64.getDecoder();
+
+    static {
+        jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
+
     private final Semaphore lock = new Semaphore(1, true);
     private final Path apiKeyDataPath;
     private final Path passwordDataPath;
@@ -34,10 +39,6 @@ public class PasswordAndAPIKeyManager implements Writable {
     private final byte[][] salts = new byte[2][];
     private TreeMap<WebsiteIdPair, String> apiKeys = new TreeMap<>();
     private TreeMap<WebsiteIdPair, String> passwords = new TreeMap<>();
-
-    static {
-        jsonHandler.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    }
 
     public PasswordAndAPIKeyManager(Path basePath, char[] key, boolean create, Logger logger) throws Exception {
         Path parentPath = Path.of(basePath.toString(), DIRECTORY_NAME);

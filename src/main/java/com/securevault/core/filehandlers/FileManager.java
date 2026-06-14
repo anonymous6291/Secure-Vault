@@ -5,7 +5,7 @@ import com.securevault.core.Writable;
 import com.securevault.core.configurations.CipherManager;
 import com.securevault.core.configurations.ConfigurationDefaults;
 import com.securevault.core.configurations.SecureRandomValueGenerator;
-import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.listeners.FileManagerListener;
 import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 
 import javax.crypto.Cipher;
@@ -43,17 +43,17 @@ public class FileManager implements FileTransferManagerListener, Writable {
     private final byte[] salt;
     private final PathTrie allFiles = new PathTrie();
     private final FileTransferManager fileTransferManager;
-    private final FileManagerUpdateListener fileManagerUpdateListener;
+    private final FileManagerListener fileManagerListener;
     private final Logger logger;
     private volatile char[] nextMaskedFileName;
 
-    public FileManager(Path basePath, char[] vaultKey, boolean create, FileManagerUpdateListener fileManagerUpdateListener, Logger logger) throws Exception {
+    public FileManager(Path basePath, char[] vaultKey, boolean create, FileManagerListener fileManagerListener, Logger logger) throws Exception {
         this.logger = logger;
         fileDataPath = Path.of(basePath.toString(), FILE_DATA_NAME);
         fileStoragePath = Path.of(basePath.toString(), FILE_STORAGE_FOLDER_NAME);
         actualFileStoragePath = Path.of(fileStoragePath.toString(), getInternalPath(Path.of("")).toString());
         this.vaultKey = vaultKey;
-        this.fileManagerUpdateListener = fileManagerUpdateListener;
+        this.fileManagerListener = fileManagerListener;
         String lastFileName = "0";
         int filesCount = 0;
         try {
@@ -104,7 +104,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         this.nextMaskedFileName = lastFileName.toCharArray();
         fileTransferManager = new FileTransferManager(vaultKey, this, logger);
         fileTransferManager.start();
-        fileManagerUpdateListener.setFileTransferMonitor(fileTransferManager);
+        fileManagerListener.setFileTransferMonitor(fileTransferManager);
         if (filesCount != 0) {
             incrementNextFileName();
         }
@@ -303,7 +303,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return;
             } else if (fileCopyType == FileCopyOption.Type.ASK) {
                 List<String> options;
-                String message ;
+                String message;
                 if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.directoryExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.isDirectory(targetFilePath))) {
                     options = FileCopyOption.optionsExceptReplace;
                     message = "[" + targetFilePath + "] is a directory.";
@@ -311,7 +311,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                     options = FileCopyOption.options;
                     message = "File [" + targetFilePath + "] already exists.";
                 }
-                String response = fileManagerUpdateListener.askForResponse(message, options);
+                String response = fileManagerListener.askForResponse(message, options);
                 fileCopyOption.setType(Enum.valueOf(FileCopyOption.Type.class, response));
                 addFileForTransfer(from, to, fileTransferMode, fileCopyOption);
                 return;
@@ -561,8 +561,8 @@ public class FileManager implements FileTransferManagerListener, Writable {
     @Override
     public void fileTransferCompleted(FileTransferData fileTransferData) {
         Path from = fileTransferData.from();
+        Path to = fileTransferData.to();
         if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
-            Path to = fileTransferData.to();
             File toFile = to.toFile();
             String fromFileName;
             if (fileTransferData.notes().containsKey("renamed")) {
@@ -573,18 +573,20 @@ public class FileManager implements FileTransferManagerListener, Writable {
             Path filePath = fileStoragePath.relativize(to.getParent());
             FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), filePath.toString());
             allFiles.putFileData(fileData);
+            fileManagerListener.fileAdded(fileData.getOriginalFilePath().toString());
             logger.logInfo("File [" + from + "] added.");
         } else {
-            logger.logInfo("File [" + from + "] retrieved.");
+            Path vaultFilePath = fileStoragePath.relativize(from);
+            logger.logInfo("File [" + Path.of(vaultFilePath.getParent().toString(), to.getFileName().toString()) + "] retrieved.");
         }
     }
 
     @Override
     public void fileTransferFailed(FileTransferData fileTransferData) {
         if (fileTransferData.mode() == FileTransferMode.ENCRYPT) {
-            fileManagerUpdateListener.newUpdate("Failed to add file [" + fileTransferData.from() + "] to the vault.");
+            fileManagerListener.fileTransferFailed("Failed to add file [" + fileTransferData.from() + "] to the vault.");
         } else {
-            fileManagerUpdateListener.newUpdate("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
+            fileManagerListener.fileTransferFailed("Failed to copy file to [" + fileTransferData.to() + "] from the vault.");
         }
     }
 

@@ -1,7 +1,7 @@
 package com.securevault.core;
 
 import com.securevault.core.filehandlers.FileTransferMonitor;
-import com.securevault.core.filehandlers.listeners.FileManagerUpdateListener;
+import com.securevault.core.filehandlers.listeners.FileManagerListener;
 import com.securevault.core.keyhandlers.KeyType;
 import com.securevault.core.keyhandlers.WebsiteIdPair;
 
@@ -163,7 +163,7 @@ public class IndependentMode {
     }
 
     private static void independentModeVaultStart(String path, boolean create, char[] password) throws Exception {
-        Vault vault = new Vault(path, create, password, new FileManagerUpdateListener() {
+        Vault vault = new Vault(path, create, password, new FileManagerListener() {
             @Override
             public void setFileTransferMonitor(FileTransferMonitor fileTransferMonitor1) {
                 fileTransferMonitor = fileTransferMonitor1;
@@ -189,7 +189,11 @@ public class IndependentMode {
             }
 
             @Override
-            public void newUpdate(String update) {
+            public void fileAdded(String fileName) {
+            }
+
+            @Override
+            public void fileTransferFailed(String update) {
                 IO.println("Update:\n" + update);
             }
         }, true);
