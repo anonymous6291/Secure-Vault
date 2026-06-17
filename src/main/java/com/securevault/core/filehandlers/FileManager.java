@@ -249,9 +249,9 @@ public class FileManager implements FileTransferManagerListener, Writable {
         lock.release();
     }
 
-    private boolean fileExists(Path filePath, FileTransferMode mode) {
+    private boolean fileOrDirectoryExists(Path filePath, FileTransferMode mode) {
         if (mode == FileTransferMode.ENCRYPT) {
-            return allFiles.fileExists(filePath.toString());
+            return allFiles.fileOrDirectoryExists(filePath.toString());
         } else {
             return Files.exists(filePath);
         }
@@ -271,7 +271,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
         int start = 1;
         Path newFilePath;
-        while (fileExists(newFilePath = Path.of(parent.toString(), firstName + start + extension), mode)) {
+        while (fileOrDirectoryExists(newFilePath = Path.of(parent.toString(), firstName + start + extension), mode)) {
             start++;
         }
         return newFilePath;
@@ -289,7 +289,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         } else {
             targetFilePath = Path.of(to.toString(), from.getFileName().toString());
         }
-        if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.fileExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.exists(targetFilePath))) {
+        if ((fileTransferMode == FileTransferMode.ENCRYPT && allFiles.fileOrDirectoryExists(targetFilePath.toString())) || (fileTransferMode == FileTransferMode.DECRYPT && Files.exists(targetFilePath))) {
             FileCopyOption.Type fileCopyType = fileCopyOption.getType();
             if (fileCopyType == FileCopyOption.Type.RENAME_ALL || fileCopyType == FileCopyOption.Type.RENAME) {
                 String renamedName = sanitizeFileName(renameFile(targetFilePath, fileTransferMode).getFileName().toString());
@@ -357,10 +357,14 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void addFile(Path from, Path to) throws FileNotFoundException {
+    private void addFile0(Path from, Path to) throws FileNotFoundException {
         from = from.normalize();
+        if (Files.isDirectory(from)) {
+            addDirectory0(from, to);
+            return;
+        }
         if (!Files.isRegularFile(from)) {
-            throw new FileNotFoundException("[" + from + "] doesn't exist.");
+            throw new FileNotFoundException("Regular file [" + from + "] doesn't exist.");
         }
         to = validateAndGetInternalPath(to);
         if (!lock()) {
@@ -375,10 +379,11 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void addDirectory(Path from, Path to) throws FileNotFoundException {
+    private void addDirectory0(Path from, Path to) throws FileNotFoundException {
         from = from.normalize();
-        if (!Files.isDirectory(from)) {
-            throw new FileNotFoundException("[" + from + "] doesn't exist.");
+        if (Files.isRegularFile(from)) {
+            addFile0(from, to);
+            return;
         }
         to = validateAndGetInternalPath(to);
         if (!lock()) {
@@ -393,14 +398,22 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void getFile(Path from, Path to) {
-        from = validateAndGetInternalPath(from);
+    public void addFile(Path from, Path to) throws FileNotFoundException {
+        addFile0(from, to);
+    }
+
+    private void getFile0(Path from, Path to) {
+        Path internalFrom = validateAndGetInternalPath(from);
         to = to.normalize();
+        if (allFiles.directoryExists(internalFrom.toString())) {
+            getDirectory0(from, to);
+            return;
+        }
         if (!lock()) {
             return;
         }
         try {
-            addFileForTransfer(from, to, FileTransferMode.DECRYPT, new FileCopyOption());
+            addFileForTransfer(internalFrom, to, FileTransferMode.DECRYPT, new FileCopyOption());
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while getting the file : " + e.getMessage());
         } finally {
@@ -408,8 +421,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void getDirectory(Path from, Path to) {
+    private void getDirectory0(Path from, Path to) {
         Path normalizedFrom = validateAndGetInternalPath(from);
+        if (allFiles.fileExists(normalizedFrom.toString())) {
+            getFile0(from, to);
+            return;
+        }
         Path parent = normalizedFrom.getParent();
         if (parent == null) {
             parent = Path.of("");
@@ -427,6 +444,10 @@ public class FileManager implements FileTransferManagerListener, Writable {
         } finally {
             unlock();
         }
+    }
+
+    public void getFile(Path from, Path to) {
+        getFile0(from, to);
     }
 
     public boolean changeFileName(Path path, String newOriginalName) {
@@ -447,7 +468,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    private void deleteFile0(FileData fileData) {
+    private void deleteFileData(FileData fileData) {
         try {
             Path maskedFile = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
             logger.logWarn("Deleting file [" + fileData.getOriginalFilePath() + "] .");
@@ -459,29 +480,24 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void deleteFile(Path path) {
-        path = validateAndGetInternalPath(path);
+    private void deleteFile0(Path path) {
+        Path internalPath = validateAndGetInternalPath(path);
+        if (allFiles.directoryExists(internalPath.toString())) {
+            deleteDirectory0(path);
+            return;
+        }
         if (!lock()) {
             return;
         }
         try {
-            FileData fileData = allFiles.deleteFile(path.toString());
+            FileData fileData = allFiles.deleteFile(internalPath.toString());
             if (fileData != null) {
-                deleteFile0(fileData);
+                deleteFileData(fileData);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Exception occurred while deleting the file [" + path + "] : " + e.getMessage());
+            throw new RuntimeException("Exception occurred while deleting the file [" + internalPath + "] : " + e.getMessage());
         } finally {
             unlock();
-        }
-    }
-
-    public void makeDirectory(Path path) {
-        path = validateAndGetInternalPath(path);
-        try {
-            Path directory = Path.of(fileStoragePath.toString(), path.toString());
-            Files.createDirectories(directory);
-        } catch (Exception _) {
         }
     }
 
@@ -498,17 +514,25 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    public void deleteDirectory(Path path) {
-        path = validateAndGetInternalPath(path);
+    private void deleteDirectory0(Path path) {
+        Path internalPath = validateAndGetInternalPath(path);
+        if (allFiles.fileExists(internalPath.toString())) {
+            deleteFile0(path);
+            return;
+        }
         if (!lock()) {
             return;
         }
         try {
-            allFiles.deleteDirectory(path.toString()).forEach(this::deleteFile0);
-            deleteEmptyDirectories(Path.of(fileStoragePath.toString(), path.toString()));
+            allFiles.deleteDirectory(internalPath.toString()).forEach(this::deleteFileData);
+            deleteEmptyDirectories(Path.of(fileStoragePath.toString(), internalPath.toString()));
         } finally {
             unlock();
         }
+    }
+
+    public void deleteFile(Path path) {
+        deleteFile0(path);
     }
 
     public List<String> getFilesList(Path path) {
@@ -667,7 +691,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return allFilesData;
         }
 
-        boolean fileExists(String path) {
+        boolean fileOrDirectoryExists(String path) {
             String[] paths = splitPath(path);
             int n = paths.length - 1;
             if (n < 0) {
@@ -685,6 +709,16 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 last.getFilesListRecursively(allFilesData);
             }
             return allFilesData;
+        }
+
+        boolean fileExists(String path) {
+            String[] paths = splitPath(path);
+            int n = paths.length - 1;
+            if (n < 0) {
+                return true;
+            }
+            PathTrieNode last = getLastDirectory0(paths, 0, n - 1);
+            return last != null && last.fileDataExists(paths[n]);
         }
 
         boolean directoryExists(String path) {

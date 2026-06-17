@@ -77,26 +77,26 @@ public class DependentMode implements FileManagerListener {
         iterations = ipcSpec.iterations();
         keyLength = ipcSpec.keyLength();
         tagLength = ipcSpec.tagLength();
-        char[] password = ipcSpec.password().toCharArray();
-        byte[] salt = base64Decoder.decode(ipcSpec.salt());
         iv = new byte[ipcSpec.ivLength()];
         for (int i = iv.length - 1; i >= 0; i--) {
             iv[i] = -128;
         }
         try {
-            initHandles(password, salt);
+            initHandles(ipcSpec);
         } catch (Exception e) {
             directlyPrintError(e.getMessage());
         }
     }
 
-    private static void initHandles(char[] password, byte[] salt) throws Exception {
-        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+    private static void initHandles(IPCSpec ipcSpec) throws Exception {
+        char[] password = new String(base64Decoder.decode(ipcSpec.password())).toCharArray();
+        byte[] salt = base64Decoder.decode(ipcSpec.salt());
+        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(ipcSpec.secretKeyFactoryAlgorithm());
         KeySpec keySpec = new PBEKeySpec(password, salt, iterations, keyLength);
         SecretKey secretKey = secretKeyFactory.generateSecret(keySpec);
-        secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), "AES");
-        encryptCipher = Cipher.getInstance("AES/GCM/NoPadding");
-        decryptCipher = Cipher.getInstance("AES/GCM/NoPadding");
+        secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), ipcSpec.secretKeySpecAlgorithm());
+        encryptCipher = Cipher.getInstance(ipcSpec.cipherTransformation());
+        decryptCipher = Cipher.getInstance(ipcSpec.cipherTransformation());
         new Thread(() -> {
             while (!shutdown.get()) {
                 try {
@@ -172,7 +172,13 @@ public class DependentMode implements FileManagerListener {
         CommandType commandType = command.type();
         List<String> args = command.args();
         try {
-            if (commandType == CommandType.OPEN) {
+            if (commandType == CommandType.TERMINATE) {
+                if (vault != null) {
+                    vault.closeVault();
+                    sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault closed.")));
+                }
+                shutdown.set(true);
+            } else if (commandType == CommandType.OPEN) {
                 if (vault != null && vault.isVaultOpen()) {
                     sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Vault is already open.")));
                 } else if (validNumberOfArguments(command, 3)) {
@@ -181,7 +187,7 @@ public class DependentMode implements FileManagerListener {
                     char[] password = args.get(2).toCharArray();
                     try {
                         vault = new Vault(path, create, password, new DependentMode(), false);
-                        sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault opened.")));
+                        sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(true))));
                     } catch (Exception e) {
                         sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of(e.getMessage())));
                     }
@@ -195,7 +201,6 @@ public class DependentMode implements FileManagerListener {
                     case CLOSE -> {
                         vault.closeVault();
                         sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault closed.")));
-                        shutdown.set(true);
                     }
                     case VERSION ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(vault.getVersion())));
@@ -244,26 +249,18 @@ public class DependentMode implements FileManagerListener {
                     case DISABLE_SELF_DESTRUCT -> vault.disableSelfDestruct();
                     case IS_SELF_DESTRUCT_ENABLED ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.isSelfDestructEnabled()))));
-                    case PUT_FILE, PUT_DIRECTORY -> {
+                    case PUT_FILE -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             Path to = Path.of(args.get(1));
-                            if (commandType == CommandType.PUT_FILE) {
-                                vault.putFile(from, to);
-                            } else {
-                                vault.putDirectory(from, to);
-                            }
+                            vault.putFile(from, to);
                         }
                     }
-                    case GET_FILE, GET_DIRECTORY -> {
+                    case GET_FILE -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             Path to = Path.of(args.get(1));
-                            if (commandType == CommandType.GET_FILE) {
-                                vault.getFile(from, to);
-                            } else {
-                                vault.getDirectory(from, to);
-                            }
+                            vault.getFile(from, to);
                         }
                     }
                     case GET_FILES_LIST -> {
@@ -277,28 +274,17 @@ public class DependentMode implements FileManagerListener {
                         }
                     }
                     case CHANGE_FILE_NAME -> {
+                        sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Feature not supported yet.")));/*
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             String newName = args.get(1);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.changeFileName(from, newName)))));
-                        }
+                        }*/
                     }
                     case DELETE_FILE -> {
                         if (validNumberOfArguments(command, 1)) {
                             Path path = Path.of(args.getFirst());
                             vault.deleteFile(path);
-                        }
-                    }
-                    case MAKE_DIRECTORY -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            Path path = Path.of(args.getFirst());
-                            vault.makeDirectory(path);
-                        }
-                    }
-                    case DELETE_DIRECTORY -> {
-                        if (validNumberOfArguments(command, 1)) {
-                            Path path = Path.of(args.getFirst());
-                            vault.deleteDirectory(path);
                         }
                     }
                     case ABORT_ALL_FILE_TRANSFERS -> vault.abortAllFileTransfers();

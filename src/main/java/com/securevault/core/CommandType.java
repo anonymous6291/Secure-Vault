@@ -1,6 +1,7 @@
 package com.securevault.core;
 
 public enum CommandType {
+    TERMINATE,
     OPEN,
     IS_OPEN,
     CLOSE,
@@ -14,14 +15,10 @@ public enum CommandType {
     DISABLE_SELF_DESTRUCT,
     IS_SELF_DESTRUCT_ENABLED,
     PUT_FILE,
-    PUT_DIRECTORY,
     GET_FILE,
-    GET_DIRECTORY,
     GET_FILES_LIST,
     CHANGE_FILE_NAME,
     DELETE_FILE,
-    MAKE_DIRECTORY,
-    DELETE_DIRECTORY,
     ABORT_ALL_FILE_TRANSFERS,
     PUT_PASSWORD,
     GET_PASSWORD,

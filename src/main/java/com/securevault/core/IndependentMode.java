@@ -33,14 +33,10 @@ public class IndependentMode {
         COMMANDS.put("dsd", CommandType.DISABLE_SELF_DESTRUCT);
         COMMANDS.put("isde", CommandType.IS_SELF_DESTRUCT_ENABLED);
         COMMANDS.put("pf", CommandType.PUT_FILE);
-        COMMANDS.put("pd", CommandType.PUT_DIRECTORY);
         COMMANDS.put("gf", CommandType.GET_FILE);
-        COMMANDS.put("gd", CommandType.GET_DIRECTORY);
         COMMANDS.put("gfl", CommandType.GET_FILES_LIST);
         COMMANDS.put("cfn", CommandType.CHANGE_FILE_NAME);
         COMMANDS.put("df", CommandType.DELETE_FILE);
-        COMMANDS.put("md", CommandType.MAKE_DIRECTORY);
-        COMMANDS.put("dd", CommandType.DELETE_DIRECTORY);
         COMMANDS.put("aaft", CommandType.ABORT_ALL_FILE_TRANSFERS);
         COMMANDS.put("pp", CommandType.PUT_PASSWORD);
         COMMANDS.put("gp", CommandType.GET_PASSWORD);
@@ -262,26 +258,18 @@ public class IndependentMode {
                             }
                         }
                         case IS_SELF_DESTRUCT_ENABLED -> IO.println(vault.isSelfDestructEnabled());
-                        case PUT_FILE, PUT_DIRECTORY -> {
+                        case PUT_FILE -> {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                if (usageCommand == CommandType.PUT_FILE) {
-                                    vault.putFile(from, to);
-                                } else {
-                                    vault.putDirectory(from, to);
-                                }
+                                vault.putFile(from, to);
                             }
                         }
-                        case GET_FILE, GET_DIRECTORY -> {
+                        case GET_FILE -> {
                             Path from = Path.of(IO.readln("From path: "));
                             Path to = Path.of(IO.readln("To path: "));
                             if (confirmAction(usageCommand)) {
-                                if (usageCommand == CommandType.GET_FILE) {
-                                    vault.getFile(from, to);
-                                } else {
-                                    vault.getDirectory(from, to);
-                                }
+                                vault.getFile(from, to);
                             }
                         }
                         case GET_FILES_LIST -> {
@@ -290,28 +278,17 @@ public class IndependentMode {
                             printFilesList(vault.getFilesList(path1));
                         }
                         case CHANGE_FILE_NAME -> {
-                            Path filePath = Path.of(IO.readln("File path: "));
+                            /*Path filePath = Path.of(IO.readln("File path: "));
                             String newName = IO.readln("Enter the new name: ");
                             if (confirmAction(usageCommand)) {
                                 vault.changeFileName(filePath, newName);
-                            }
+                            }*/
+                            IO.println("Feature not supported yet.");
                         }
                         case DELETE_FILE -> {
                             Path filePath = Path.of(IO.readln("Path of file to delete: "));
                             if (confirmAction(usageCommand)) {
                                 vault.deleteFile(filePath);
-                            }
-                        }
-                        case MAKE_DIRECTORY -> {
-                            Path filePath = Path.of(IO.readln("Path of directory to make: "));
-                            if (confirmAction(usageCommand)) {
-                                vault.makeDirectory(filePath);
-                            }
-                        }
-                        case DELETE_DIRECTORY -> {
-                            Path filePath = Path.of(IO.readln("Path of directory to delete: "));
-                            if (confirmAction(usageCommand)) {
-                                vault.deleteDirectory(filePath);
                             }
                         }
                         case ABORT_ALL_FILE_TRANSFERS -> {

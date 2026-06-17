@@ -120,16 +120,8 @@ public class Vault {
         fileManager.addFile(from, to);
     }
 
-    public void putDirectory(Path from, Path to) throws Exception {
-        fileManager.addDirectory(from, to);
-    }
-
     public void getFile(Path from, Path to) {
         fileManager.getFile(from, to);
-    }
-
-    public void getDirectory(Path from, Path to) {
-        fileManager.getDirectory(from, to);
     }
 
     public boolean changeFileName(Path path, String newName) {
@@ -138,14 +130,6 @@ public class Vault {
 
     public void deleteFile(Path path) {
         fileManager.deleteFile(path);
-    }
-
-    public void makeDirectory(Path path) {
-        fileManager.makeDirectory(path);
-    }
-
-    public void deleteDirectory(Path path) {
-        fileManager.deleteDirectory(path);
     }
 
     public List<String> getFilesList(Path path) {
