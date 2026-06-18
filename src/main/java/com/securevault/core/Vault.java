@@ -180,8 +180,8 @@ public class Vault {
         return isVaultOpen;
     }
 
-    public void lockdownVault(long seconds) {
-        configurationManager.enableLockdownMode(seconds);
+    public void lockdownVault(long minutes) {
+        configurationManager.enableLockdownMode(minutes);
         closeVault();
     }
 

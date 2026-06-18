@@ -25,12 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 enum OutputType {
-    ERROR,
-    INVALID_COMMAND,
-    RESPONSE,
-    QUERY,
-    UPDATE_FILE_ADDED,
-    UPDATE_FILE_TRANSFER_FAILED,
+    ERROR, INVALID_COMMAND, RESPONSE, QUERY, UPDATE_FILE_ADDED, UPDATE_FILE_TRANSFER_FAILED,
 }
 
 public class DependentMode implements FileManagerListener {
@@ -113,7 +108,7 @@ public class DependentMode implements FileManagerListener {
                     }
                     String decryptedData = decryptData(data);
                     Command command = jsonHandler.readValue(decryptedData, Command.class);
-                    handleCommand(command);
+                    Thread.startVirtualThread(() -> handleCommand(command));
                 } catch (Exception e) {
                     sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
                 }
@@ -172,12 +167,14 @@ public class DependentMode implements FileManagerListener {
         CommandType commandType = command.type();
         List<String> args = command.args();
         try {
-            if (commandType == CommandType.TERMINATE) {
+            if (commandType == CommandType.TERMINATE || commandType == CommandType.CLOSE) {
                 if (vault != null) {
                     vault.closeVault();
-                    sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault closed.")));
                 }
-                shutdown.set(true);
+                if (commandType == CommandType.TERMINATE) {
+                    shutdown.set(true);
+                }
+                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(true))));
             } else if (commandType == CommandType.OPEN) {
                 if (vault != null && vault.isVaultOpen()) {
                     sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Vault is already open.")));
@@ -192,16 +189,12 @@ public class DependentMode implements FileManagerListener {
                         sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of(e.getMessage())));
                     }
                 }
+            } else if (commandType == CommandType.IS_OPEN) {
+                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault != null && vault.isVaultOpen()))));
             } else if (vault == null || !vault.isVaultOpen()) {
                 sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Vault is not open.")));
             } else {
                 switch (commandType) {
-                    case IS_OPEN ->
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.isVaultOpen()))));
-                    case CLOSE -> {
-                        vault.closeVault();
-                        sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of("Vault closed.")));
-                    }
                     case VERSION ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(vault.getVersion())));
                     case CHANGE_PASSWORD -> {
@@ -213,7 +206,7 @@ public class DependentMode implements FileManagerListener {
                                 vault.changeVaultPassword(oldPassword.toCharArray(), newPassword.toCharArray());
                                 output = new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(true)));
                             } catch (Exception e) {
-                                output = new Output(OutputType.ERROR, command.commandId(), List.of(Boolean.toString(false), e.getMessage()));
+                                output = new Output(OutputType.ERROR, command.commandId(), List.of(e.getMessage()));
                             }
                             sendOutput(output);
                         }
@@ -222,15 +215,19 @@ public class DependentMode implements FileManagerListener {
                         if (validNumberOfArguments(command, 1)) {
                             String password = args.getFirst();
                             vault.selfDestruct(password.toCharArray());
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(true))));
                         }
                     }
                     case LOCKDOWN -> {
                         if (validNumberOfArguments(command, 1)) {
                             try {
-                                long duration = Long.parseLong(args.getFirst());
-                                vault.lockdownVault(duration);
-                            } catch (Exception _) {
+                                long minutes = Long.parseLong(args.getFirst());
+                                vault.lockdownVault(minutes);
+                                sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(true))));
+                            } catch (NumberFormatException _) {
                                 sendInvalidCommandInfo(command);
+                            } catch (Exception e) {
+                                sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of(e.getMessage())));
                             }
                         }
                     }
@@ -239,7 +236,7 @@ public class DependentMode implements FileManagerListener {
                             try {
                                 int tries = Integer.parseInt(args.getFirst());
                                 vault.setSelfDestruct(tries);
-                            } catch (Exception _) {
+                            } catch (NumberFormatException _) {
                                 sendInvalidCommandInfo(command);
                             }
                         }
@@ -274,12 +271,14 @@ public class DependentMode implements FileManagerListener {
                         }
                     }
                     case CHANGE_FILE_NAME -> {
-                        sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Feature not supported yet.")));/*
+                        sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Feature not supported yet.")));
+                        /*
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             String newName = args.get(1);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.changeFileName(from, newName)))));
-                        }*/
+                        }
+                        */
                     }
                     case DELETE_FILE -> {
                         if (validNumberOfArguments(command, 1)) {
@@ -293,7 +292,7 @@ public class DependentMode implements FileManagerListener {
                             try {
                                 int responseId = Integer.parseInt(args.getFirst());
                                 String response = args.get(1);
-                                ResponseHandler responseHandler = responseHandlers.get(responseId);
+                                ResponseHandler responseHandler = responseHandlers.remove(responseId);
                                 if (responseHandler != null) {
                                     responseHandler.setResponse(response);
                                 }
@@ -310,66 +309,81 @@ public class DependentMode implements FileManagerListener {
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), fileTransferMonitor.getFailedFileTransfersList()));
                     case GET_FILE_TRANSFER_PROGRESS ->
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Double.toString(fileTransferMonitor.getFileTransferProgress()))));
-                    case PUT_PASSWORD -> {
-                        if (validNumberOfArguments(command, 3)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            String value = args.get(2);
-                            vault.addKey(websiteIdPair, value, KeyType.PASSWORD);
+                    case PUT_PASSWORD, PUT_API_KEY -> {
+                        if (validNumberOfArguments(command, 2)) {
+                            KeyType keyType;
+                            if (commandType == CommandType.PUT_PASSWORD) {
+                                keyType = KeyType.PASSWORD;
+                            } else {
+                                keyType = KeyType.API_KEY;
+                            }
+                            WebsiteIdPair websiteIdPair = jsonHandler.readValue(args.getFirst(), WebsiteIdPair.class);
+                            String value = args.get(1);
+                            vault.addKey(websiteIdPair, value, keyType);
                         }
                     }
-                    case GET_PASSWORD -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            String response = vault.getKeyValue(websiteIdPair, KeyType.PASSWORD);
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
+                    case GET_PASSWORD, GET_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            KeyType keyType;
+                            if (commandType == CommandType.GET_PASSWORD) {
+                                keyType = KeyType.PASSWORD;
+                            } else {
+                                keyType = KeyType.API_KEY;
+                            }
+                            WebsiteIdPair websiteIdPair = jsonHandler.readValue(args.getFirst(), WebsiteIdPair.class);
+                            String response = vault.getKeyValue(websiteIdPair, keyType);
+                            List<String> returnList;
+                            if (response == null) {
+                                returnList = List.of();
+                            } else {
+                                returnList = List.of(response);
+                            }
+                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), returnList));
                         }
                     }
-                    case DELETE_PASSWORD -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            vault.deleteKey(websiteIdPair, KeyType.PASSWORD);
+                    case DELETE_PASSWORD, DELETE_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            KeyType keyType;
+                            if (commandType == CommandType.DELETE_PASSWORD) {
+                                keyType = KeyType.PASSWORD;
+                            } else {
+                                keyType = KeyType.API_KEY;
+                            }
+                            WebsiteIdPair websiteIdPair = jsonHandler.readValue(args.getFirst(), WebsiteIdPair.class);
+                            vault.deleteKey(websiteIdPair, keyType);
                         }
                     }
-                    case SEARCH_PASSWORD -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            List<WebsiteIdPair> result = vault.searchKey(websiteIdPair, KeyType.PASSWORD);
+                    case SEARCH_PASSWORD, SEARCH_API_KEY -> {
+                        if (validNumberOfArguments(command, 1)) {
+                            KeyType keyType;
+                            if (commandType == CommandType.SEARCH_PASSWORD) {
+                                keyType = KeyType.PASSWORD;
+                            } else {
+                                keyType = KeyType.API_KEY;
+                            }
+                            WebsiteIdPair websiteIdPair = jsonHandler.readValue(args.getFirst(), WebsiteIdPair.class);
+                            List<WebsiteIdPair> result = vault.searchKey(websiteIdPair, keyType);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().map(WebsiteIdPair::convertToJSON).toList()));
                         }
                     }
-                    case DELETE_ALL_PASSWORDS -> vault.clearKeys(KeyType.PASSWORD);
-                    case GET_ALL_PASSWORDS ->
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId, vault.getAllKeys(KeyType.PASSWORD).stream().map(WebsiteIdPair::convertToJSON).toList()));
-                    case PUT_API_KEY -> {
-                        if (validNumberOfArguments(command, 3)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            String value = args.get(2);
-                            vault.addKey(websiteIdPair, value, KeyType.API_KEY);
+                    case DELETE_ALL_PASSWORDS, DELETE_ALL_API_KEYS -> {
+                        KeyType keyType;
+                        if (commandType == CommandType.DELETE_ALL_PASSWORDS) {
+                            keyType = KeyType.PASSWORD;
+                        } else {
+                            keyType = KeyType.API_KEY;
                         }
+                        vault.clearKeys(keyType);
                     }
-                    case GET_API_KEY -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            String response = vault.getKeyValue(websiteIdPair, KeyType.API_KEY);
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(response)));
+                    case GET_ALL_PASSWORDS, GET_ALL_API_KEYS -> {
+                        KeyType keyType;
+                        if (commandType == CommandType.GET_ALL_PASSWORDS) {
+                            keyType = KeyType.PASSWORD;
+                        } else {
+                            keyType = KeyType.API_KEY;
                         }
+                        sendOutput(new Output(OutputType.RESPONSE, command.commandId, vault.getAllKeys(keyType).stream().map(WebsiteIdPair::convertToJSON).toList()));
                     }
-                    case DELETE_API_KEY -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            vault.deleteKey(websiteIdPair, KeyType.API_KEY);
-                        }
-                    }
-                    case SEARCH_API_KEY -> {
-                        if (validNumberOfArguments(command, 2)) {
-                            WebsiteIdPair websiteIdPair = new WebsiteIdPair(args.getFirst(), args.get(1));
-                            List<WebsiteIdPair> result = vault.searchKey(websiteIdPair, KeyType.API_KEY);
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result.stream().map(WebsiteIdPair::convertToJSON).toList()));
-                        }
-                    }
-                    case DELETE_ALL_API_KEYS -> vault.clearKeys(KeyType.API_KEY);
-                    case GET_ALL_API_KEYS ->
-                            sendOutput(new Output(OutputType.RESPONSE, command.commandId, vault.getAllKeys(KeyType.API_KEY).stream().map(WebsiteIdPair::convertToJSON).toList()));
                     case GET_LOG -> {
                         if (validNumberOfArguments(command, 1)) {
                             try {

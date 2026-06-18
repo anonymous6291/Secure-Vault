@@ -118,12 +118,12 @@ public class ConfigurationManager implements Writable {
         writeData();
     }
 
-    public void enableLockdownMode(long seconds) {
+    public void enableLockdownMode(long minutes) {
         if (!lock()) {
             return;
         }
         configuration.setLockdown(true);
-        configuration.setLockdown_end_time(new Date(seconds * 1000 + System.currentTimeMillis()));
+        configuration.setLockdown_end_time(new Date(minutes * 60 * 1000 + System.currentTimeMillis()));
         unlock();
     }
 

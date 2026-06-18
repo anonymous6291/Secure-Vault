@@ -233,9 +233,9 @@ public class IndependentMode {
                         }
                         case LOCKDOWN -> {
                             try {
-                                long seconds = Long.parseLong(IO.readln("Enter the lockdown duration in seconds: "));
+                                long minutes = Long.parseLong(IO.readln("Enter the lockdown duration in minutes: "));
                                 if (confirmAction(usageCommand)) {
-                                    vault.lockdownVault(seconds);
+                                    vault.lockdownVault(minutes);
                                 }
                             } catch (NumberFormatException _) {
                                 IO.println("Invalid duration.");
