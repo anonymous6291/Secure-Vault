@@ -92,28 +92,26 @@ public class DependentMode implements FileManagerListener {
         secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), ipcSpec.secretKeySpecAlgorithm());
         encryptCipher = Cipher.getInstance(ipcSpec.cipherTransformation());
         decryptCipher = Cipher.getInstance(ipcSpec.cipherTransformation());
-        new Thread(() -> {
-            while (!shutdown.get()) {
-                try {
-                    String data = IO.readln();
-                    if (data.equals(IMMEDIATE_SHUTDOWN)) {
-                        if (vault != null && vault.isVaultOpen()) {
-                            try {
-                                vault.closeVault();
-                            } catch (Exception _) {
-                            }
+        while (!shutdown.get()) {
+            try {
+                String data = IO.readln();
+                if (data.equals(IMMEDIATE_SHUTDOWN)) {
+                    if (vault != null && vault.isVaultOpen()) {
+                        try {
+                            vault.closeVault();
+                        } catch (Exception _) {
                         }
-                        shutdown.set(true);
-                        continue;
                     }
-                    String decryptedData = decryptData(data);
-                    Command command = jsonHandler.readValue(decryptedData, Command.class);
-                    Thread.startVirtualThread(() -> handleCommand(command));
-                } catch (Exception e) {
-                    sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
+                    shutdown.set(true);
+                    continue;
                 }
+                String decryptedData = decryptData(data);
+                Command command = jsonHandler.readValue(decryptedData, Command.class);
+                Thread.startVirtualThread(() -> handleCommand(command));
+            } catch (Exception e) {
+                sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
             }
-        }).start();
+        }
     }
 
     private static byte[] performCipher(Cipher cipher, int mode, SecretKeySpec secretKeySpec, byte[] iv, byte[] data) throws Exception {

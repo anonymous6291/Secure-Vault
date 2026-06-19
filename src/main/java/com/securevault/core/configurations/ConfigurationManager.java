@@ -185,7 +185,7 @@ public class ConfigurationManager implements Writable {
         }
     }
 
-    static class Configuration {
+    public static class Configuration {
         private String version;
         private boolean lockdown;
         private Date lockdown_end_time;

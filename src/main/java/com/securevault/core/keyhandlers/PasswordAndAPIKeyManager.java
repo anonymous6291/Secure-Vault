@@ -266,5 +266,3 @@ public class PasswordAndAPIKeyManager implements Writable {
     }
 }
 
-record PairValue(WebsiteIdPair websiteIdPair, String value) {
-}
