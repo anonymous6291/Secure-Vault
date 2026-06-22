@@ -269,14 +269,11 @@ public class DependentMode implements FileManagerListener {
                         }
                     }
                     case CHANGE_FILE_NAME -> {
-                        sendOutput(new Output(OutputType.ERROR, command.commandId(), List.of("Feature not supported yet.")));
-                        /*
                         if (validNumberOfArguments(command, 2)) {
                             Path from = Path.of(args.getFirst());
                             String newName = args.get(1);
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), List.of(Boolean.toString(vault.changeFileName(from, newName)))));
                         }
-                        */
                     }
                     case DELETE_FILE -> {
                         if (validNumberOfArguments(command, 1)) {
