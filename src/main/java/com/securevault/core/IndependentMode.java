@@ -35,6 +35,7 @@ public class IndependentMode {
         COMMANDS.put("pf", CommandType.PUT_FILE);
         COMMANDS.put("gf", CommandType.GET_FILE);
         COMMANDS.put("gfl", CommandType.GET_FILES_LIST);
+        COMMANDS.put("mf", CommandType.MOVE_FILE);
         COMMANDS.put("cfn", CommandType.CHANGE_FILE_NAME);
         COMMANDS.put("df", CommandType.DELETE_FILE);
         COMMANDS.put("aaft", CommandType.ABORT_ALL_FILE_TRANSFERS);
@@ -277,13 +278,27 @@ public class IndependentMode {
                             IO.println("Files:");
                             printFilesList(vault.getFilesList(path1));
                         }
-                        case CHANGE_FILE_NAME -> {
-                            /*Path filePath = Path.of(IO.readln("File path: "));
-                            String newName = IO.readln("Enter the new name: ");
+                        case MOVE_FILE -> {
+                            Path filePath = Path.of(IO.readln("File path: "));
+                            Path targetPath = Path.of(IO.readln("Move to: "));
                             if (confirmAction(usageCommand)) {
-                                vault.changeFileName(filePath, newName);
-                            }*/
-                            IO.println("Feature not supported yet.");
+                                if (vault.moveFile(filePath, targetPath)) {
+                                    IO.println("File moved.");
+                                } else {
+                                    IO.println("File was not moved.");
+                                }
+                            }
+                        }
+                        case CHANGE_FILE_NAME -> {
+                            Path filePath = Path.of(IO.readln("File path: "));
+                            String newName = IO.readln("New name: ");
+                            if (confirmAction(usageCommand)) {
+                                if (vault.renameFile(filePath, newName)) {
+                                    IO.println("File name changed.");
+                                } else {
+                                    IO.println("File name not changed.");
+                                }
+                            }
                         }
                         case DELETE_FILE -> {
                             Path filePath = Path.of(IO.readln("Path of file to delete: "));

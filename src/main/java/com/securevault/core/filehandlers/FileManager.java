@@ -161,7 +161,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
     }
 
     private Path getInternalPath(Path path) {
-        path = removeLeadingDotsFromPath(path.normalize());
+        path = removeLeadingDotsFromPath(path);
         return Path.of(ROOT_DIRECTORY, path.toString());
     }
 
@@ -450,19 +450,45 @@ public class FileManager implements FileTransferManagerListener, Writable {
         getFile0(from, to);
     }
 
-    public boolean changeFileName(Path path, String newOriginalName) {
+    private boolean updateFileData(Path oldFilePathWithName, Path newFilePathWithName) {
+        if (allFiles.fileOrDirectoryExists(newFilePathWithName.toString())) {
+            return false;
+        }
+        FileData fileData = allFiles.deleteFile(oldFilePathWithName.toString());
+        if (fileData == null) {
+            return false;
+        }
+        fileData.setOriginalName(newFilePathWithName.getFileName().toString());
+        fileData.setFilePath(newFilePathWithName.getParent().toString());
+        allFiles.putFileData(fileData);
+        return true;
+    }
+
+    public boolean moveFile(Path path, Path newPath) {
+        path = validateAndGetInternalPath(path);
+        newPath = validateAndGetInternalPath(sanitizePath(newPath));
+        if (!lock()) {
+            return false;
+        }
+        try {
+            return updateFileData(path, newPath.resolve(path.getFileName()));
+        } finally {
+            unlock();
+        }
+    }
+
+    public boolean renameFile(Path path, String fileName) {
+        fileName = sanitizeFileName(Path.of(fileName).getFileName().toString());
+        if (fileName.isBlank()) {
+            return false;
+        }
+        Path newFilePathWithName = validateAndGetInternalPath(path.resolveSibling(fileName));
         path = validateAndGetInternalPath(path);
         if (!lock()) {
             return false;
         }
         try {
-            FileData fileData = allFiles.deleteFile(path.toString());
-            if (fileData == null) {
-                return false;
-            }
-            fileData.setOriginalName(newOriginalName);
-            allFiles.putFileData(fileData);
-            return true;
+            return updateFileData(path, newFilePathWithName);
         } finally {
             unlock();
         }

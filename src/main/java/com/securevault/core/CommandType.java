@@ -17,6 +17,7 @@ public enum CommandType {
     PUT_FILE,
     GET_FILE,
     GET_FILES_LIST,
+    MOVE_FILE,
     CHANGE_FILE_NAME,
     DELETE_FILE,
     ABORT_ALL_FILE_TRANSFERS,
