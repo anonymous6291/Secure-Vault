@@ -282,8 +282,9 @@ public class IndependentMode {
                             Path filePath = Path.of(IO.readln("File path: "));
                             Path targetPath = Path.of(IO.readln("Move to: "));
                             if (confirmAction(usageCommand)) {
-                                if (vault.moveFile(filePath, targetPath)) {
-                                    IO.println("File moved.");
+                                Path result = vault.moveFile(filePath, targetPath);
+                                if (result != null) {
+                                    IO.println("Renewed file's path [" + result + "]. ");
                                 } else {
                                     IO.println("File was not moved.");
                                 }
@@ -293,10 +294,11 @@ public class IndependentMode {
                             Path filePath = Path.of(IO.readln("File path: "));
                             String newName = IO.readln("New name: ");
                             if (confirmAction(usageCommand)) {
-                                if (vault.renameFile(filePath, newName)) {
-                                    IO.println("File name changed.");
+                                String result = vault.renameFile(filePath, newName);
+                                if (result != null) {
+                                    IO.println("File renamed to [" + result + "]. ");
                                 } else {
-                                    IO.println("File name not changed.");
+                                    IO.println("File not renamed.");
                                 }
                             }
                         }

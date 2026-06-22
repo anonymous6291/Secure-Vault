@@ -464,31 +464,38 @@ public class FileManager implements FileTransferManagerListener, Writable {
         return true;
     }
 
-    public boolean moveFile(Path path, Path newPath) {
+    public Path moveFile(Path path, Path newPath) {
         path = validateAndGetInternalPath(path);
         newPath = validateAndGetInternalPath(sanitizePath(newPath));
         if (!lock()) {
-            return false;
+            return null;
         }
         try {
-            return updateFileData(path, newPath.resolve(path.getFileName()));
+            Path targetFilePath = newPath.resolve(path.getFileName());
+            if (updateFileData(path, targetFilePath)) {
+                return targetFilePath;
+            }
+            return null;
         } finally {
             unlock();
         }
     }
 
-    public boolean renameFile(Path path, String fileName) {
+    public String renameFile(Path path, String fileName) {
         fileName = sanitizeFileName(Path.of(fileName).getFileName().toString());
         if (fileName.isBlank()) {
-            return false;
+            return null;
         }
-        Path newFilePathWithName = validateAndGetInternalPath(path.resolveSibling(fileName));
         path = validateAndGetInternalPath(path);
+        Path newFilePathWithName = path.resolveSibling(fileName);
         if (!lock()) {
-            return false;
+            return null;
         }
         try {
-            return updateFileData(path, newFilePathWithName);
+            if (updateFileData(path, newFilePathWithName)) {
+                return fileName;
+            }
+            return null;
         } finally {
             unlock();
         }
