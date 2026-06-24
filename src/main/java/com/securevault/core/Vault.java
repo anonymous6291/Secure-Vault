@@ -205,6 +205,16 @@ public class Vault {
         return configurationManager.isSelfDestructEnabled();
     }
 
+    private void deleteFilesRecursively(Path path) {
+        try {
+            if (Files.isDirectory(path)) {
+                Files.list(path).forEach(this::deleteFilesRecursively);
+            }
+            Files.delete(path);
+        } catch (Exception _) {
+        }
+    }
+
     public void selfDestruct(char[] password) {
         if (different(this.password, password)) {
             logger.logSevere("Vault destruction failed due to wrong vault key.");
@@ -213,6 +223,7 @@ public class Vault {
         logger.logWarn("Vault entered self destruction mode.");
         configurationManager.selfDestruct();
         closeVault();
+        deleteFilesRecursively(vaultPath);
     }
 
     public String getVersion() {
