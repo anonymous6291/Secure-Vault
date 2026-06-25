@@ -95,7 +95,7 @@ public class DependentMode implements FileManagerListener {
         while (!shutdown.get()) {
             try {
                 String data = IO.readln();
-                if (data.equals(IMMEDIATE_SHUTDOWN)) {
+                if (data == null || data.equals(IMMEDIATE_SHUTDOWN)) {
                     if (vault != null && vault.isVaultOpen()) {
                         try {
                             vault.closeVault();
@@ -103,11 +103,11 @@ public class DependentMode implements FileManagerListener {
                         }
                     }
                     shutdown.set(true);
-                    continue;
+                } else {
+                    String decryptedData = decryptData(data);
+                    Command command = jsonHandler.readValue(decryptedData, Command.class);
+                    Thread.startVirtualThread(() -> handleCommand(command));
                 }
-                String decryptedData = decryptData(data);
-                Command command = jsonHandler.readValue(decryptedData, Command.class);
-                Thread.startVirtualThread(() -> handleCommand(command));
             } catch (Exception e) {
                 sendOutput(new Output(OutputType.ERROR, -1, List.of(e.toString())));
             }

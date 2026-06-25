@@ -75,7 +75,6 @@ public class Vault {
             }
             throw e;
         }
-        String s = "";
         registerAutoSave(configurationManager);
         registerAutoSave(fileManager);
         registerAutoSave(passwordAndAPIKeyManager);
