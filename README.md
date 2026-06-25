@@ -183,7 +183,7 @@ Vaults created on one platform can be accessed on another without modification.
 Clone the repository:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/anonymous6291/secure-vault-core.git
 cd secure-vault-core
 ```
 
