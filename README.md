@@ -174,7 +174,7 @@ Vaults created on one platform can be accessed on another without modification.
 ## 📋 Requirements
 
 * Java 25
-* Maven 3.9+
+* Maven 4.0+
 
 ---
 
@@ -185,6 +185,11 @@ Clone the repository:
 ```bash
 git clone https://github.com/anonymous6291/secure-vault-core.git
 cd secure-vault-core
+```
+Modify the configuration:
+
+```text
+Change the default values of "configurationManagerData" in com.securevault.core.configurations.ConfigurationDefaults
 ```
 
 Build the project:
@@ -200,7 +205,22 @@ mvn clean package
 Run the generated JAR:
 
 ```bash
-java -jar target/secure-vault-core-1.0-SNAPSHOT.jar
+java -jar ./target/secure-vault-core-1.0-SNAPSHOT.jar
+```
+
+---
+
+## 🖥️ Building executable (Requires GraalVM >= 25)
+
+Linux
+```bash
+chmod +x ./secure_vault_core_native_image.sh
+./secure_vault_core_native_image.sh
+```
+
+Windows
+```cmd
+.\secure_vault_core_native_image.bat
 ```
 
 ---
