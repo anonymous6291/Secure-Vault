@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class FileTransferManager implements FileTransferMonitor {
-    private static final int MAX_PARALLEL_FILE_TRANSFERS = Runtime.getRuntime().availableProcessors() - 1;
+    private static final int MAX_PARALLEL_FILE_TRANSFERS = Math.clamp(Runtime.getRuntime().availableProcessors() - 2, 1, 10);
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final Semaphore universalLock = new Semaphore(1, true);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
