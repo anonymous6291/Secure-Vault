@@ -15,6 +15,13 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public class IndependentMode {
+    private static final String ASCII_ART = """
+             ,---.                                         ,--.   ,--.              ,--.  ,--.       ,---.      ,--.      ,--.  \s
+            '   .-'  ,---.  ,---.,--.,--.,--.--. ,---.      \\  `.'  /,--,--.,--.,--.|  |,-'  '-.    '.-.  \\    /    \\    /    \\ \s
+            `.  `-. | .-. :| .--'|  ||  ||  .--'| .-. :      \\     /' ,-.  ||  ||  ||  |'-.  .-'     .-' .'   |  ()  |  |  ()  |\s
+            .-'    |\\   --.\\ `--.'  ''  '|  |   \\   --.       \\   / \\ '-'  |'  ''  '|  |  |  |      /   '-..--.\\    /.--.\\    / \s
+            `-----'  `----' `---' `----' `--'    `----'        `-'   `--`--' `----' `--'  `--'      '-----''--' `--' '--' `--'  \s
+            """;
     private static final Map<String, CommandType> COMMANDS = new LinkedHashMap<>();
     private static final String EXIT_COMMAND = "e|exit";
     private static final String EXIT_COMMAND_REGEX = "(?i:(exit|e))";
@@ -58,6 +65,12 @@ public class IndependentMode {
         COMMANDS.put("cl", CommandType.CLEAR_LOGS);
     }
 
+    private static void printASCIIArt() {
+        for (String s : ASCII_ART.split("\n")) {
+            IO.println(s);
+        }
+    }
+
     private static void printUsageList() {
         for (String command : COMMANDS.keySet()) {
             IO.println(command + " => " + COMMANDS.get(command));
@@ -74,6 +87,7 @@ public class IndependentMode {
 
     public static void start(String[] args) {
         try {
+            printASCIIArt();
             int n = args.length, i = 0;
             String path = null;
             boolean create = true;
