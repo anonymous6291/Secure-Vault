@@ -4,14 +4,12 @@ import java.nio.file.Path;
 
 public class FileData {
     private final String maskedName;
-    private final long fileLength;
     private String originalName;
     private String filePath;
 
-    public FileData(String originalName, String maskedName, long fileLength, String filePath) {
+    public FileData(String originalName, String maskedName, String filePath) {
         this.originalName = originalName;
         this.maskedName = maskedName;
-        this.fileLength = fileLength;
         this.filePath = filePath;
     }
 
@@ -25,10 +23,6 @@ public class FileData {
 
     public String getMaskedName() {
         return maskedName;
-    }
-
-    public long getFileLength() {
-        return fileLength;
     }
 
     public Path getFilePath() {

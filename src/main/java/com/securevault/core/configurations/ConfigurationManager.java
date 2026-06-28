@@ -14,7 +14,7 @@ import java.util.Date;
 import java.util.concurrent.Semaphore;
 
 public class ConfigurationManager implements Writable {
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "2.0.0";
     private static final int KEY_LENGTH = 50;
     private static final int MAX_TRIES = 5;
     private static final int PER_DAY_MAX_TRIES = 15;
@@ -48,6 +48,9 @@ public class ConfigurationManager implements Writable {
             Cipher cipher = CipherManager.getCipher(configurationManagerData.key(), configurationManagerData.iv(), configurationManagerData.salt(), Cipher.DECRYPT_MODE);
             String configString = new String(cipher.doFinal(configData), StandardCharsets.UTF_16);
             configuration = json.readValue(configString, Configuration.class);
+            if (!configuration.getVersion().equals(VERSION)) {
+                throw new UnsupportedConfigurationException("This vault supports only files encrypted by SecureVault version [" + VERSION + "].");
+            }
             if (configuration.getIs_destructed()) {
                 throw new VaultDestructedException();
             }

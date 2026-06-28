@@ -55,7 +55,7 @@ public class Vault {
         try {
             configurationManager = new ConfigurationManager(getPath(CONFIG_FILE_NAME), create, password);
         } catch (AEADBadTagException e) {
-            throw new VaultException("Invalid password or corrupted Configuration.");
+            throw new VaultException("Invalid password, corrupted configuration or version mismatch.");
         }
         vaultKey = configurationManager.getVaultKey();
         logger = new Logger(getPath(""), vaultKey, create, independentMode);
@@ -280,14 +280,16 @@ public class Vault {
                         } catch (Exception _) {
                         }
                     }
-                    if (lock()) {
-                        for (Writable writable : autosave) {
-                            try {
-                                writable.writeData();
-                            } catch (Exception _) {
+                    if (!shutdown.get()) {
+                        if (lock()) {
+                            for (Writable writable : autosave) {
+                                try {
+                                    writable.writeData();
+                                } catch (Exception _) {
+                                }
                             }
+                            unlock();
                         }
-                        unlock();
                     }
                 }
                 isShutdown.set(true);

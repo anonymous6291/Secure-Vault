@@ -14,7 +14,7 @@ public class CipherManager {
     private static final String SECRET_KEY_SPEC_PROVIDER = "AES";
     private static final int TAG_LENGTH = 128;
     private static final int KEY_LENGTH = 256;
-    private static final int ITERATIONS = 100000;
+    private static final int ITERATIONS = 6_00_000;
 
     private static SecretKey deriveKey(char[] password, byte[] salt) throws Exception {
         SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance(SECRET_KEY_FACTORY_PROVIDER);

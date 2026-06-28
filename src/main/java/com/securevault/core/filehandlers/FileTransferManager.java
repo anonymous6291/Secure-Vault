@@ -9,7 +9,10 @@ import com.securevault.core.filehandlers.listeners.FileTransferManagerListener;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -19,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class FileTransferManager implements FileTransferMonitor {
-    private static final int MAX_PARALLEL_FILE_TRANSFERS = Runtime.getRuntime().availableProcessors() / 2;
+    private static final int MAX_PARALLEL_FILE_TRANSFERS = Runtime.getRuntime().availableProcessors() - 1;
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final Semaphore universalLock = new Semaphore(1, true);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
@@ -94,6 +97,11 @@ public class FileTransferManager implements FileTransferMonitor {
     private void startSingleFileTransfer(FileTransferHandler fileTransferHandler) {
         if (!abortAllFileTransfers) {
             Future<FileTransferStatus> result = executorService.submit(fileTransferHandler);
+            if (fileTransferHandler.getMode() == FileTransferMode.ENCRYPT) {
+                logger.logInfo("Adding file [" + fileTransferHandler.getFromFileName() + "].");
+            } else {
+                logger.logInfo("Retrieving file [" + fileTransferHandler.getToFileName() + "].");
+            }
             long last = 0;
             while (!result.isDone()) {
                 if (abortAllFileTransfers) {
@@ -119,6 +127,9 @@ public class FileTransferManager implements FileTransferMonitor {
                     fileTransferManagerListener.fileTransferCompleted(fileTransferHandler.getFileTransferData());
                 }
             } catch (Exception _) {
+                logger.logError("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                failedFiles.offer("[" + fileTransferHandler.getFromFileName() + "] failed to transfer.");
+                fileTransferManagerListener.fileTransferFailed(fileTransferHandler.getFileTransferData());
             }
         }
         numberOfPendingFiles.decrementAndGet();
@@ -244,7 +255,9 @@ public class FileTransferManager implements FileTransferMonitor {
     }
 
     static class FileTransferHandler implements Callable<FileTransferStatus> {
-        private static final int CHUNK_SIZE = 512 * 1024;
+        public static final String FILE_PART_EXTENSION = ".part";
+        private static final int CHUNK_SIZE = 1024 * 1024; // 1 MB
+        private static final long MAX_FILE_PART_SIZE = 1024 * 1024 * 256; // 256 MB
         private final FileTransferData fileTransferData;
         private final Path from;
         private final Path to;
@@ -263,51 +276,111 @@ public class FileTransferManager implements FileTransferMonitor {
             this.key = key;
             this.mode = fileTransferData.mode();
             this.id = id;
-            File fromFile = from.toFile();
-            dataToBeTransferred = fromFile.length();
+            if (mode == FileTransferMode.ENCRYPT) {
+                dataToBeTransferred = from.toFile().length();
+            } else {
+                dataToBeTransferred = calculateEncryptedFileLength(from);
+            }
             dataTransferred = new AtomicLong(0);
             fileTransferStatus = FileTransferStatus.PENDING;
             abortTransfer = false;
         }
 
+        public static Path convertToPart(Path path, int partNumber) {
+            return Path.of(path.toString() + FILE_PART_EXTENSION + partNumber);
+        }
+
+        private long calculateEncryptedFileLength(Path path) {
+            long len = 0;
+            int partNumber = 1;
+            Path partPath;
+            while (Files.exists(partPath = convertToPart(path, partNumber++))) {
+                len += partPath.toFile().length();
+            }
+            return len;
+        }
+
         @Override
         public FileTransferStatus call() {
-            try (BufferedInputStream bufferedInputStream = new BufferedInputStream(Files.newInputStream(from)); BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(Files.newOutputStream(to))) {
-                InputStream inputStream;
-                OutputStream outputStream;
+            try {
                 if (mode == FileTransferMode.ENCRYPT) {
-                    byte[] iv = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.IV_LENGTH);
-                    byte[] salt = SecureRandomValueGenerator.generateSecureBytes(ConfigurationDefaults.SALT_LENGTH);
-                    bufferedOutputStream.write(iv);
-                    bufferedOutputStream.write(salt);
-                    outputStream = new CipherOutputStream(bufferedOutputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));
-                    inputStream = bufferedInputStream;
+                    return encryptFile();
                 } else {
-                    int ivLength = ConfigurationDefaults.IV_LENGTH;
-                    int saltLength = ConfigurationDefaults.SALT_LENGTH;
-                    byte[] iv = new byte[ivLength];
-                    byte[] salt = new byte[saltLength];
-                    if (!(bufferedInputStream.read(iv) == ivLength && bufferedInputStream.read(salt) == saltLength)) {
-                        throw new RuntimeException("Corrupted file [" + from + "] .");
-                    }
-                    inputStream = new CipherInputStream(bufferedInputStream, CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE));
-                    outputStream = bufferedOutputStream;
-                }
-                byte[] chunk = new byte[CHUNK_SIZE];
-                int len;
-                while (!abortTransfer && (len = inputStream.read(chunk)) > 0) {
-                    outputStream.write(chunk, 0, len);
-                    dataTransferred.addAndGet(len);
-                }
-                inputStream.close();
-                outputStream.close();
-                if (abortTransfer) {
-                    Files.delete(to);
-                    return fileTransferStatus = FileTransferStatus.ABORTED;
+                    return decryptFile();
                 }
             } catch (Exception e) {
                 fileTransferStatus = FileTransferStatus.FAILED;
                 return FileTransferStatus.FAILED;
+            }
+        }
+
+        private FileTransferStatus encryptFile() throws Exception {
+            try (InputStream inputStream = new BufferedInputStream(Files.newInputStream(from))) {
+                long maxFilePartSize = MAX_FILE_PART_SIZE, bytesWritten = maxFilePartSize + 1;
+                OutputStream outputStream = OutputStream.nullOutputStream();
+                int ivLength = ConfigurationDefaults.IV_LENGTH, saltLength = ConfigurationDefaults.SALT_LENGTH;
+                int len, partNumber = 1;
+                byte[] chunk = new byte[CHUNK_SIZE];
+                while (!(abortTransfer || (len = inputStream.read(chunk)) < 0)) {
+                    if (bytesWritten + len > maxFilePartSize) {
+                        outputStream.close();
+                        byte[] iv = SecureRandomValueGenerator.generateSecureBytes(ivLength);
+                        byte[] salt = SecureRandomValueGenerator.generateSecureBytes(saltLength);
+                        Path partPath = convertToPart(to, partNumber++);
+                        outputStream = new BufferedOutputStream(Files.newOutputStream(partPath));
+                        outputStream.write(iv);
+                        outputStream.write(salt);
+                        outputStream = new CipherOutputStream(outputStream, CipherManager.getCipher(key, iv, salt, Cipher.ENCRYPT_MODE));
+                        bytesWritten = 0;
+                    }
+                    bytesWritten += len;
+                    outputStream.write(chunk, 0, len);
+                    dataTransferred.addAndGet(len);
+                }
+                outputStream.close();
+                if (abortTransfer) {
+                    while (--partNumber > 0) {
+                        Files.delete(convertToPart(to, partNumber));
+                    }
+                    return fileTransferStatus = FileTransferStatus.ABORTED;
+                }
+                return fileTransferStatus = FileTransferStatus.COMPLETED;
+            }
+        }
+
+        private FileTransferStatus decryptFile() throws Exception {
+            OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(to));
+            int len, partNumber = 1;
+            int ivLength = ConfigurationDefaults.IV_LENGTH, saltLength = ConfigurationDefaults.SALT_LENGTH;
+            byte[] chunk = new byte[CHUNK_SIZE];
+            InputStream inputStream = InputStream.nullInputStream();
+            while (true) {
+                if ((len = inputStream.read(chunk)) < 0) {
+                    inputStream.close();
+                    Path newPartPath = convertToPart(from, partNumber++);
+                    if (!Files.exists(newPartPath)) {
+                        break;
+                    }
+                    inputStream = new BufferedInputStream(Files.newInputStream(newPartPath));
+                    byte[] iv = new byte[ivLength];
+                    byte[] salt = new byte[saltLength];
+                    if (inputStream.read(iv) != ivLength || inputStream.read(salt) != saltLength) {
+                        outputStream.close();
+                        inputStream.close();
+                        Files.delete(to);
+                        return fileTransferStatus = FileTransferStatus.FAILED;
+                    }
+                    inputStream = new CipherInputStream(inputStream, CipherManager.getCipher(key, iv, salt, Cipher.DECRYPT_MODE));
+                } else {
+                    outputStream.write(chunk, 0, len);
+                    dataTransferred.addAndGet(len);
+                }
+            }
+            inputStream.close();
+            outputStream.close();
+            if (abortTransfer) {
+                Files.delete(to);
+                return fileTransferStatus = FileTransferStatus.ABORTED;
             }
             return fileTransferStatus = FileTransferStatus.COMPLETED;
         }

@@ -77,18 +77,13 @@ public class FileManager implements FileTransferManagerListener, Writable {
                         break;
                     }
                     Path maskedFilePath = Path.of(fileStoragePath.toString(), path, maskedName);
-                    File file = maskedFilePath.toFile();
-                    if (!file.exists()) {
-                        logger.logError("File [" + path + "] has entry but doesn't exist, skipping it.");
-                    } else {
-                        if (smaller(lastFileName, maskedName)) {
-                            lastFileName = maskedName;
-                        }
-                        maskedFileEntries.add(maskedFilePath.toString());
-                        FileData currentFileData = new FileData(originalName, maskedName, file.length(), path);
-                        allFiles.putFileData(currentFileData);
-                        filesCount++;
+                    if (smaller(lastFileName, maskedName)) {
+                        lastFileName = maskedName;
                     }
+                    maskedFileEntries.add(maskedFilePath.toString());
+                    FileData currentFileData = new FileData(originalName, maskedName, path);
+                    allFiles.putFileData(currentFileData);
+                    filesCount++;
                 }
                 logger.logInfo("Total [" + filesCount + "] file entries scanned.");
             } else {
@@ -119,8 +114,12 @@ public class FileManager implements FileTransferManagerListener, Writable {
             if (!canDeleteDirectoryIfEmpty) {
                 return;
             }
-        } else if (Files.isRegularFile(current) && maskedFileEntries.contains(current.toString())) {
-            return;
+        } else if (Files.isRegularFile(current)) {
+            String filePath = current.toString();
+            int index = filePath.lastIndexOf(FileTransferManager.FileTransferHandler.FILE_PART_EXTENSION);
+            if (maskedFileEntries.contains(filePath.substring(0, index))) {
+                return;
+            }
         }
         try {
             Files.delete(current);
@@ -317,10 +316,11 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 return;
             } else {
                 if (fileTransferMode == FileTransferMode.ENCRYPT) {
-                    FileData fileData = allFiles.getFileData(targetFilePath.toString());
+                    FileData fileData = allFiles.deleteFile(targetFilePath.toString());
                     if (fileData == null) {
                         return;
                     }
+                    deleteMaskedFiles(fileData);
                     toFilePath = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
                 } else {
                     toFilePath = targetFilePath;
@@ -501,12 +501,14 @@ public class FileManager implements FileTransferManagerListener, Writable {
         }
     }
 
-    private void deleteFileData(FileData fileData) {
+    private void deleteMaskedFiles(FileData fileData) {
         try {
             Path maskedFile = Path.of(fileStoragePath.toString(), fileData.getMaskedFilePath().toString());
             logger.logWarn("Deleting file [" + fileData.getOriginalFilePath() + "] .");
-            if (Files.exists(maskedFile)) {
-                Files.delete(maskedFile);
+            int partNumber = 1;
+            Path partPath;
+            while (Files.exists(partPath = FileTransferManager.FileTransferHandler.convertToPart(maskedFile, partNumber++))) {
+                Files.delete(partPath);
             }
         } catch (Exception e) {
             logger.logError("Failed to delete file [" + fileData.getOriginalFilePath() + "] : " + e.getMessage());
@@ -525,7 +527,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
         try {
             FileData fileData = allFiles.deleteFile(internalPath.toString());
             if (fileData != null) {
-                deleteFileData(fileData);
+                deleteMaskedFiles(fileData);
             }
         } catch (Exception e) {
             throw new RuntimeException("Exception occurred while deleting the file [" + internalPath + "] : " + e.getMessage());
@@ -557,7 +559,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
             return;
         }
         try {
-            allFiles.deleteDirectory(internalPath.toString()).forEach(this::deleteFileData);
+            allFiles.deleteDirectory(internalPath.toString()).forEach(this::deleteMaskedFiles);
             deleteEmptyDirectories(Path.of(fileStoragePath.toString(), internalPath.toString()));
         } finally {
             unlock();
@@ -628,7 +630,7 @@ public class FileManager implements FileTransferManagerListener, Writable {
                 fromFileName = sanitizeFileName(from.getFileName().toString());
             }
             Path filePath = fileStoragePath.relativize(to.getParent());
-            FileData fileData = new FileData(fromFileName, toFile.getName(), toFile.length(), filePath.toString());
+            FileData fileData = new FileData(fromFileName, toFile.getName(), filePath.toString());
             allFiles.putFileData(fileData);
             fileManagerListener.fileAdded(fileData.getOriginalFilePath().toString());
             logger.logInfo("File [" + from + "] added.");
