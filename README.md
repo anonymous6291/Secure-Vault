@@ -205,7 +205,7 @@ mvn clean package
 Run the generated JAR:
 
 ```bash
-java -jar ./target/secure-vault-core-1.0-SNAPSHOT.jar
+java -jar ./target/secure-vault-core-2.0.0.jar
 ```
 
 ---
