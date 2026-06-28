@@ -1,4 +1,4 @@
-# 🔐 SecureVault (Console Edition)
+# 🔐 SecureVault 2.0.0 (Console Edition)
 
 SecureVault is a cross-platform encrypted vault application written in Java that enables secure storage of files, directories, passwords, and API keys. It combines modern cryptography, parallel file processing, and advanced security mechanisms to provide a secure environment for protecting sensitive data.
 
