@@ -123,10 +123,6 @@ public class Vault {
         fileManager.getFile(from, to);
     }
 
-    public Path moveFile(Path path, Path newPath) {
-        return fileManager.moveFile(path, newPath);
-    }
-
     public String renameFile(Path path, String fileName) {
         return fileManager.renameFile(path, fileName);
     }

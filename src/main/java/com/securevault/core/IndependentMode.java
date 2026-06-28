@@ -35,7 +35,6 @@ public class IndependentMode {
         COMMANDS.put("pf", CommandType.PUT_FILE);
         COMMANDS.put("gf", CommandType.GET_FILE);
         COMMANDS.put("gfl", CommandType.GET_FILES_LIST);
-        COMMANDS.put("mf", CommandType.MOVE_FILE);
         COMMANDS.put("cfn", CommandType.CHANGE_FILE_NAME);
         COMMANDS.put("df", CommandType.DELETE_FILE);
         COMMANDS.put("aaft", CommandType.ABORT_ALL_FILE_TRANSFERS);
@@ -277,18 +276,6 @@ public class IndependentMode {
                             Path path1 = Path.of(IO.readln("Enter the path: "));
                             IO.println("Files:");
                             printFilesList(vault.getFilesList(path1));
-                        }
-                        case MOVE_FILE -> {
-                            Path filePath = Path.of(IO.readln("File path: "));
-                            Path targetPath = Path.of(IO.readln("Move to: "));
-                            if (confirmAction(usageCommand)) {
-                                Path result = vault.moveFile(filePath, targetPath);
-                                if (result != null) {
-                                    IO.println("Renewed file's path [" + result + "]. ");
-                                } else {
-                                    IO.println("File was not moved.");
-                                }
-                            }
                         }
                         case CHANGE_FILE_NAME -> {
                             Path filePath = Path.of(IO.readln("File path: "));

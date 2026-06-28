@@ -268,22 +268,14 @@ public class DependentMode implements FileManagerListener {
                             }
                         }
                     }
-                    case CHANGE_FILE_NAME, MOVE_FILE -> {
+                    case CHANGE_FILE_NAME -> {
                         if (validNumberOfArguments(command, 2)) {
                             Path path = Path.of(args.getFirst());
                             List<String> result = new LinkedList<>();
-                            if (commandType == CommandType.CHANGE_FILE_NAME) {
-                                String fileName = vault.renameFile(path, args.get(1));
-                                result.add(Boolean.toString(fileName != null));
-                                if (fileName != null) {
-                                    result.add(fileName);
-                                }
-                            } else {
-                                Path filePath = vault.moveFile(path, Path.of(args.get(1)));
-                                result.add(Boolean.toString(filePath != null));
-                                if (filePath != null) {
-                                    result.add(filePath.toString());
-                                }
+                            String fileName = vault.renameFile(path, args.get(1));
+                            result.add(Boolean.toString(fileName != null));
+                            if (fileName != null) {
+                                result.add(fileName);
                             }
                             sendOutput(new Output(OutputType.RESPONSE, command.commandId(), result));
                         }
