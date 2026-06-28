@@ -22,11 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class FileTransferManager implements FileTransferMonitor {
-    private static final int MAX_PARALLEL_FILE_TRANSFERS = Math.clamp(Runtime.getRuntime().availableProcessors() - 2, 1, 10);
+    private static final int MAX_PARALLEL_FILE_TRANSFERS = Math.clamp(Runtime.getRuntime().availableProcessors() / 2, 1, 5);
     private final Semaphore fileTransferLock = new Semaphore(MAX_PARALLEL_FILE_TRANSFERS);
     private final Semaphore universalLock = new Semaphore(1, true);
     private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_PARALLEL_FILE_TRANSFERS);
-    private final Duration DELAY = Duration.ofMillis(300);
+    private final Duration DELAY = Duration.ofMillis(500);
     private final ConcurrentLinkedQueue<String> failedFiles = new ConcurrentLinkedQueue<>();
     private final ConcurrentLinkedQueue<FileTransferHandler> pendingFiles = new ConcurrentLinkedQueue<>();
     private final AtomicInteger numberOfPendingFiles = new AtomicInteger(0);
@@ -256,7 +256,7 @@ public class FileTransferManager implements FileTransferMonitor {
 
     static class FileTransferHandler implements Callable<FileTransferStatus> {
         public static final String FILE_PART_EXTENSION = ".part";
-        private static final int CHUNK_SIZE = 1024 * 1024; // 1 MB
+        private static final int CHUNK_SIZE = 1024 * 1024 * 2; // 2 MB
         private static final long MAX_FILE_PART_SIZE = 1024 * 1024 * 256; // 256 MB
         private final FileTransferData fileTransferData;
         private final Path from;
