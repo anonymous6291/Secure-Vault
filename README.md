@@ -173,7 +173,7 @@ Vaults created on one platform can be accessed on another without modification.
 
 ## 📋 Requirements
 
-* Java 25
+* GraalVM 25
 * Maven 4.0+
 
 ---
